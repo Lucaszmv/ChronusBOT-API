@@ -1,0 +1,85 @@
+# Arquivos e diretórios Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ambientes virtuais
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# IDEs e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+.vs/
+
+# Logs e arquivos temporários
+logs/
+*.log
+log.txt
+*.tmp
+*.bak
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# Arquivos específicos do projeto
+config/local.py
+config/settings_local.py
+*.env
+.env.*
+!.env.example
+
+# Arquivos de mídia e streaming
+*.mp4
+*.m3u8
+*.ts
+*.json
+!pyproject.json
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Poetry
+poetry.lock
+dist/
+
+# Outros
+*.db
+*.sqlite3
+*.sqlite 
