@@ -22,6 +22,9 @@ import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import Fore, Style, init
+import requests
+from modules.core.core_fingerprint import get_fingerprint
+import random
 
 # Inicializa o colorama
 init(autoreset=True)
@@ -38,24 +41,40 @@ segmentos_baixados = set()
 # Configurações de buffer
 BUFFER_MIN = 3
 BUFFER_MAX = 5
-WAIT_TIME_MIN = 0.1
-WAIT_TIME_MAX = 1.0
+WAIT_TIME_MIN = random.uniform(0.40, 0.50)  # Gera valor aleatório entre 0.4 e 0.5
+WAIT_TIME_MAX = random.uniform(1.90, 2.10)  # Gera valor aleatório entre 0.6 e 0.7
 
 def simular_download_segmento(url):
     """
-    Simula o download de um segmento de stream.
-
-    Realiza uma simulação do processo de download de um segmento,
-    aguardando um tempo fixo para simular a latência de rede.
-
-    Args:
-        url (str): URL do segmento a ser "baixado".
-
-    Returns:
-        bool: True se o download foi simulado com sucesso, False caso contrário.
+    Realiza o download real de um segmento de stream.
     """
-    time.sleep(0.1)  # Simula o tempo de download
-    return True
+    try:
+        # Procura por uma URL válida na string
+        inicio = url.find('https://')
+        if inicio == -1 or not url.endswith('.ts'):
+            return False
+            
+        # Extrai apenas a URL
+        url = url[inicio:]
+            
+        # Tenta baixar o segmento
+        fingerprint = get_fingerprint()
+        headers = {
+            'User-Agent': fingerprint['User-Agent'],
+            'Accept': fingerprint['Accept'],
+        }
+
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            logger.info(Fore.GREEN + f"Segmento baixado com sucesso: {url[:70]}..." + Style.RESET_ALL)
+            return True
+            
+        logger.error(Fore.RED + f"Falha ao baixar segmento (HTTP {response.status_code}): {url}" + Style.RESET_ALL)
+        return False
+
+    except Exception as e:
+        logger.error(Fore.RED + f"Erro ao baixar segmento: {str(e)}" + Style.RESET_ALL)
+        return False
 
 def processar_fila_download(fila_segmentos: deque):
     """
@@ -75,20 +94,27 @@ def processar_fila_download(fila_segmentos: deque):
             time.sleep(0.5)
             continue
 
-        url = fila_segmentos[0]  # Pega o primeiro segmento da fila sem removê-lo
+        url = fila_segmentos[0]
 
-        if url in segmentos_baixados:
-            logger.info(Fore.CYAN + f"Segmento já baixado anteriormente: {url}" + Style.RESET_ALL)
-            fila_segmentos.popleft()  # Remove o segmento da fila
+        # Se for metadata que não é prefetch, ignora
+        if url.startswith('#') and not url.startswith('#EXT-X-TWITCH-PREFETCH:'):
+            fila_segmentos.popleft()
+            continue
+
+        # Remove o prefixo do prefetch para comparação
+        url_comparacao = url.replace('#EXT-X-TWITCH-PREFETCH:', '') if url.startswith('#EXT-X-TWITCH-PREFETCH:') else url
+
+        if url_comparacao in segmentos_baixados:
+            logger.info(Fore.CYAN + f"Segmento já baixado anteriormente: {url_comparacao[:90]}..." + Style.RESET_ALL)
+            fila_segmentos.popleft()
             continue
 
         success = simular_download_segmento(url)
         
         if success:
-            segmentos_baixados.add(url)
-            fila_segmentos.popleft()  # Remove o segmento da fila apenas após o download bem-sucedido
-            mensagem = f"Segmento baixado com sucesso: @{url[:70]}... - Tamanho atual da fila de segmentos: {len(fila_segmentos)}"
-            logger.info(Fore.GREEN + mensagem + Style.RESET_ALL)
+            # Armazena a URL sem o prefixo do prefetch
+            segmentos_baixados.add(url_comparacao)
+            fila_segmentos.popleft()
         else:
             logger.error(Fore.RED + f"Falha ao simular download do segmento: {url}" + Style.RESET_ALL)
 
