@@ -7,6 +7,7 @@ para obter tokens de acesso necessários para reproduzir streams da Twitch.
 
 import sys
 import os
+from pathlib import Path
 import requests
 import json
 import logging
@@ -15,15 +16,20 @@ from datetime import datetime, timezone
 from typing import Dict
 from colorama import Fore, Style, init
 
+# Adiciona o diretório raiz do projeto ao PYTHONPATH
+root_dir = str(Path(__file__).parent.parent.parent)
+sys.path.append(root_dir)
+
 # Inicializar o Colorama
 init()
 
-# Importações locais (do mesmo diretório)
+# Importações locais
 try:
-    from modules.core.core_session import session
+    from modules.core.core_session import get_session, session_manager
     from modules.core.core_fingerprint import CLIENT_ID, get_fingerprint
 except ImportError as e:
     logging.error(f"Erro ao importar módulos locais: {e}")
+    print(f"Erro ao importar módulos. Verifique o arquivo de log.")
     sys.exit(1)
 
 def get_playback_access_token_headers(fingerprint: Dict[str, str]) -> Dict[str, str]:
@@ -98,24 +104,28 @@ def criar_payload_playback_token(channel_name: str) -> Dict:
         }
     }
 
-def obter_playback_access_token(channel_name: str, fingerprint: dict) -> dict:
+def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: int = None, proxy: str = None) -> dict:
     """
     Obtém o token de acesso de reprodução para um canal específico da Twitch.
 
     Args:
         channel_name (str): Nome do canal da Twitch.
-        fingerprint (dict): Fingerprint gerado pelo fingerprint_generator.
+        fingerprint (dict): Dados do fingerprint.
+        bot_id (int, optional): ID do bot para usar sua sessão específica.
+        proxy (str, optional): Proxy para a sessão.
 
     Returns:
-        dict: Token de acesso, incluindo valor, assinatura e informações de autorização.
-              Retorna None se ocorrer um erro na requisição.
+        dict: Token de acesso e dados relacionados ou None se ocorrer erro.
     """
     url = "https://gql.twitch.tv/gql"
     headers = get_playback_access_token_headers(fingerprint)
     payload = criar_payload_playback_token(channel_name)
     
+    # Usar get_session em vez da sessão global
+    session = get_session(bot_id)
+    
     try:
-        response = session.post(url, json=payload, headers=headers)
+        response = session.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
         
@@ -130,27 +140,40 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict) -> dict:
 
 obter_token_acesso = obter_playback_access_token
 
-def testar_obter_playback_access_token(canal):
+def testar_obter_playback_access_token(canal: str):
     """
     Testa a função de obtenção do token de acesso para um canal específico.
 
     Args:
         canal (str): Nome do canal da Twitch para testar.
     """
+    from modules.core.core_session import session_manager  # Importa o gerenciador de sessões
+    
     logging.info(f"Testando obtenção de token para o canal: {canal}")
     print(f"{Fore.YELLOW}Testando canal: {canal}{Style.RESET_ALL}")
     print("=" * 70)
     
-    # Obter o fingerprint
-    fingerprint = get_fingerprint()
+    # Criar uma sessão de teste usando o SessionManager
+    bot_id = 999  # ID específico para testes
+    session = session_manager.get_session(bot_id)
+    fingerprint = session_manager.get_fingerprint(bot_id)
     
-    token = obter_playback_access_token(canal, fingerprint)
+    print(f"{Fore.CYAN}Sessão de teste criada com bot_id: {bot_id}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Fingerprint gerado:{Style.RESET_ALL}")
+    for key, value in fingerprint.items():
+        print(f"{Fore.YELLOW}{key}:{Style.RESET_ALL} {value}")
+    print("=" * 70)
+    
+    # Obter token usando a sessão criada
+    token = obter_playback_access_token(canal, fingerprint, bot_id)
+    
     if token:
         logging.info(f"{Fore.GREEN}✅ Token obtido com sucesso para o canal {canal}{Style.RESET_ALL}")
         print(f"{Fore.GREEN}✅ Token obtido com sucesso para o canal {canal}{Style.RESET_ALL}")
         logging.info(f"Assinatura: {token['signature']}")
         print(f"Assinatura: {token['signature']}")
         print("=" * 70)
+        
         # Decodifica e exibe o conteúdo do token
         token_decodificado = json.loads(token['value'])
         logging.info("Conteúdo do token:")
@@ -169,6 +192,9 @@ def testar_obter_playback_access_token(canal):
         logging.error(f"❌ Não foi possível obter o token para o canal {canal}")
         print(f"❌ Não foi possível obter o token para o canal {canal}")
     
+    # Fechar a sessão de teste
+    session_manager.close_session(bot_id)
+    print(f"\n{Fore.GREEN}✅ Sessão de teste fechada{Style.RESET_ALL}")
     print("=" * 70)
 
 # Exemplo de uso e teste
