@@ -10,13 +10,12 @@ Functions:
     get_browser_info: Obtém informações do navegador a partir do User-Agent.
     generate_client_version: Gera um client-version no formato UUID.
     generate_fingerprint: Gera um fingerprint completo com headers.
-    get_fingerprint: Retorna o fingerprint atual ou gera um novo.
+    get_fingerprint: Retorna um novo fingerprint gerado.
     set_fingerprint: Define um novo fingerprint.
 
 Attributes:
     CLIENT_ID (str): ID do cliente para a API da Twitch.
     ua (UserAgent): Instância do UserAgent para gerar User-Agents aleatórios.
-    current_fingerprint (Dict[str, str]): Armazena o fingerprint atual.
 """
 
 import random
@@ -151,35 +150,32 @@ def generate_fingerprint() -> Dict[str, str]:
         'Client-Version': generate_client_version()
     }
 
-# Variável global para armazenar o fingerprint atual
-current_fingerprint = None
-
 def get_fingerprint() -> Dict[str, str]:
     """
-    Retorna o fingerprint atual ou gera um novo se não existir.
+    Retorna um novo fingerprint gerado.
 
     Returns:
-        Dict[str, str]: Fingerprint atual ou novo fingerprint gerado.
+        Dict[str, str]: Novo fingerprint gerado.
     """
-    global current_fingerprint
-    if current_fingerprint is None:
-        current_fingerprint = generate_fingerprint()
-    return current_fingerprint
+    return generate_fingerprint()
 
 def set_fingerprint(fingerprint: Dict[str, str]):
     """
-    Define um novo fingerprint.
+    Define um novo fingerprint (mantida para compatibilidade).
 
     Args:
         fingerprint (Dict[str, str]): Novo fingerprint a ser definido.
     """
-    global current_fingerprint
-    current_fingerprint = fingerprint
+    pass  # Não armazena mais globalmente
 
 if __name__ == "__main__":
-    print(Fore.YELLOW + "\n✅ Fingerprint gerado com sucesso" + Style.RESET_ALL)
+    print(Fore.YELLOW + "\n⏳ Gerando 3 fingerprints diferentes para teste:" + Style.RESET_ALL)
     print("=" * 70)
-    for key, value in get_fingerprint().items():
-        print(f"{key}: {value}")
-    print("=" * 70)
-    time.sleep(60)
+    
+    for i in range(3):
+        print(f"\n{Fore.GREEN}✅ Fingerprint {i+1} gerado com sucesso{Style.RESET_ALL}:\n")
+        fingerprint = get_fingerprint()
+        for key, value in fingerprint.items():
+            print(f"{key}: {value}")
+        print("=" * 70)
+time.sleep(60)
