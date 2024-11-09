@@ -78,16 +78,16 @@ class ProxyManager:
         """
         try:
             if not os.path.exists(self.proxy_file):
-                logger.warning(f"{Fore.YELLOW}Arquivo de proxies não encontrado: {self.proxy_file}{Style.RESET_ALL}")
+                logger.warning(f"Arquivo de proxies não encontrado: {self.proxy_file}")
                 return
 
             with open(self.proxy_file, 'r') as f:
                 self.proxies = [line.strip() for line in f if line.strip()]
             
-            logger.info(f"{Fore.GREEN}✅ {len(self.proxies)} proxies carregados{Style.RESET_ALL}")
+            logger.debug(f"Carregados {len(self.proxies)} proxies")
             
         except Exception as e:
-            logger.error(f"{Fore.RED}Erro ao carregar proxies: {e}{Style.RESET_ALL}")
+            logger.error(f"Erro ao carregar proxies: {e}")
 
     def format_proxy(self, proxy: str) -> Optional[str]:
         """
@@ -141,7 +141,7 @@ class ProxyManager:
         
         formatted = self.format_proxy(proxy)
         if formatted:
-            print(f"{Fore.GREEN}✅ Bot {bot_id} obteve proxy: {formatted}{Style.RESET_ALL}")
+            logger.debug(f"Bot {bot_id} obteve proxy: {formatted}")
         return formatted
 
     def release_proxy(self, bot_id: int) -> None:
@@ -156,7 +156,7 @@ class ProxyManager:
         """
         if bot_id in self.bot_proxies:
             del self.bot_proxies[bot_id]
-            print(f"{Fore.CYAN}Proxy liberado pelo bot {bot_id}{Style.RESET_ALL}")
+            logger.debug(f"Proxy liberado pelo bot {bot_id}")
 
 def create_proxy_manager(proxy_file: str = 'proxy.txt') -> ProxyManager:
     """
@@ -169,23 +169,3 @@ def create_proxy_manager(proxy_file: str = 'proxy.txt') -> ProxyManager:
         ProxyManager: Nova instância configurada do gerenciador de proxies
     """
     return ProxyManager(proxy_file)
-
-# Código de teste
-if __name__ == "__main__":
-    logger.setLevel(logging.INFO)
-    
-    print(f"{Fore.YELLOW}\nTestando ProxyManager...{Style.RESET_ALL}")
-    print("=" * 70)
-    
-    proxy_manager = create_proxy_manager()
-    
-    # Testa obtenção de proxies
-    for bot_id in range(3):
-        proxy_manager.get_proxy(bot_id)
-    
-    # Testa liberação
-    print("\nTestando liberação de proxies...")
-    for bot_id in range(3):
-        proxy_manager.release_proxy(bot_id)
-    
-    time.sleep(60)

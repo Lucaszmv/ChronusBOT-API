@@ -18,14 +18,6 @@ sys.path.append(root_dir)
 # Inicializar o Colorama
 init()
 
-try:
-    from modules.core.core_fingerprint import get_fingerprint
-    from modules.utils.utils_proxy_manager import create_proxy_manager
-except ImportError as e:
-    logging.error(f"Erro ao importar módulos: {e}")
-    print(f"Erro ao importar módulos. Verifique o arquivo de log.")
-    sys.exit(1)
-
 class SessionManager:
     """
     Gerenciador de sessões HTTP individuais para cada bot.
@@ -34,7 +26,7 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[int, requests.Session] = {}
         self.fingerprints: Dict[int, Dict[str, str]] = {}
-        self.proxy_manager = create_proxy_manager()
+        self.proxy_manager = None  # Será inicializado sob demanda
         
     def get_session(self, bot_id: int) -> requests.Session:
         """
@@ -47,6 +39,14 @@ class SessionManager:
             requests.Session: Sessão HTTP para o bot
         """
         if bot_id not in self.sessions:
+            # Importações sob demanda para evitar circular import
+            from modules.core.core_fingerprint import get_fingerprint
+            from modules.utils.utils_proxy_manager import create_proxy_manager
+            
+            # Inicializa proxy_manager se necessário
+            if self.proxy_manager is None:
+                self.proxy_manager = create_proxy_manager()
+            
             # Gerar novo fingerprint para o bot
             self.fingerprints[bot_id] = get_fingerprint()
             
@@ -120,56 +120,3 @@ def get_bot_fingerprint(bot_id: int) -> Dict[str, str]:
     Função auxiliar para obter o fingerprint de um bot.
     """
     return session_manager.get_fingerprint(bot_id)
-
-# Código de teste
-if __name__ == "__main__":
-    try:
-        # Configuração do logging
-        from datetime import datetime, timezone
-        
-        log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'logs')
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, f'session_manager_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.log')
-        
-        logging.basicConfig(filename=log_file, level=logging.INFO,
-                          format='%(asctime)s - %(levelname)s - %(message)s')
-
-        print(f"{Fore.YELLOW}Testando SessionManager...{Style.RESET_ALL}")
-        print("=" * 100)
-        
-        # Criar algumas sessões de teste
-        for i in range(3):
-            session = get_session(i)
-            fingerprint = get_bot_fingerprint(i)
-            print(f"\n{Fore.GREEN}✅ Sessão {i} criada com sucesso{Style.RESET_ALL}")
-            
-            # Mostrar status do proxy primeiro
-            if session.proxies:
-                print(f"{Fore.CYAN}Proxy obtido: {session.proxies.get('http', 'Nenhum')}{Style.RESET_ALL}")
-            else:
-                print(f"{Fore.YELLOW}⚠️ Nenhum proxy configurado para o bot {i}{Style.RESET_ALL}")
-            
-            print(f"{Fore.CYAN}Fingerprint completo do bot {i}:{Style.RESET_ALL}\n")
-            
-            # Mostrar cada detalhe do fingerprint
-            for key, value in fingerprint.items():
-                print(f"{Fore.YELLOW}{key}:{Style.RESET_ALL} {value}")
-            
-            # Mostrar detalhes da sessão
-            print(f"\n{Fore.CYAN}Detalhes da Sessão {i}:{Style.RESET_ALL}")
-            print(f"Timeout: {session.timeout}")
-            print(f"Verify SSL: {session.verify}")
-            print(f"Trust Env: {session.trust_env}")
-            
-            print("=" * 100)
-        
-        # Fechar todas as sessões
-        session_manager.close_all()
-        print(f"\n{Fore.GREEN}✅ Todas as sessões fechadas com sucesso{Style.RESET_ALL}")
-        
-        print(f"\nTodos os dados foram registrados no arquivo de log: {log_file}")
-        print("=" * 100)
-        time.sleep(60)
-    except Exception as e:
-        logging.error(f"Erro durante os testes: {e}")
-        print(f"{Fore.RED}❌ Erro durante a execução. Verifique o arquivo de log: {log_file}{Style.RESET_ALL}")

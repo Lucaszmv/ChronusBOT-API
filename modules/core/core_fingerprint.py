@@ -1,115 +1,116 @@
 """
 Módulo para geração de fingerprints de navegador para a API da Twitch.
 
-Este módulo contém constantes e funções para gerar fingerprints de navegador
-utilizados em toda a aplicação para interagir com a API da Twitch.
-
-Functions:
-    gerar_device_id: Gera um ID de dispositivo aleatório.
-    get_platform_from_user_agent: Detecta a plataforma a partir do User-Agent.
-    get_browser_info: Obtém informações do navegador a partir do User-Agent.
-    generate_client_version: Gera um client-version no formato UUID.
-    generate_fingerprint: Gera um fingerprint completo com headers.
-    get_fingerprint: Retorna um novo fingerprint gerado.
-    set_fingerprint: Define um novo fingerprint.
-
-Attributes:
-    CLIENT_ID (str): ID do cliente para a API da Twitch.
-    ua (UserAgent): Instância do UserAgent para gerar User-Agents aleatórios.
+Este módulo gera headers específicos necessários para simular um navegador real
+ao fazer requisições para a API da Twitch. Inclui headers como User-Agent,
+Sec-Ch-Ua e outros necessários para autenticação.
 """
 
 import random
 import string
 import uuid
-import time
 from typing import Dict, Tuple
 from fake_useragent import UserAgent
-from colorama import Fore, Style, init
 
-# Inicializar o Colorama
-init()
-
-# Configurações globais
+# ID do cliente oficial da Twitch Web App
 CLIENT_ID: str = "kimne78kx3ncx6brgo4mv6wki5h1ko"
 
-# Inicializar o UserAgent
-ua = UserAgent(browsers=['chrome', 'edge', 'firefox'])
+# Inicializar o UserAgent apenas com os navegadores mais comuns e suportados
+ua = UserAgent(browsers=['chrome', 'edge', 'firefox'], fallback='chrome')
 
 def gerar_device_id() -> str:
     """
-    Gera um ID de dispositivo aleatório.
+    Gera um ID de dispositivo aleatório para identificação do cliente.
+    
+    A Twitch usa este ID para rastrear dispositivos únicos. O formato é uma
+    string aleatória de 32 caracteres (letras e números).
 
     Returns:
-        str: Uma string de 32 caracteres alfanuméricos.
+        str: ID de dispositivo aleatório com 32 caracteres
     """
     caracteres = string.ascii_letters + string.digits
     return ''.join(random.choice(caracteres) for _ in range(32))
 
 def get_platform_from_user_agent(user_agent: str) -> str:
     """
-    Detecta a plataforma a partir do User-Agent.
+    Detecta a plataforma do sistema operacional a partir do User-Agent.
+    
+    Este valor é usado no header Sec-Ch-Ua-Platform, que indica a plataforma
+    do navegador para a API da Twitch.
 
     Args:
-        user_agent (str): String do User-Agent.
+        user_agent (str): String do User-Agent gerado pelo fake-useragent
 
     Returns:
-        str: Nome da plataforma detectada entre aspas duplas.
+        str: Nome da plataforma entre aspas duplas (ex: "Windows", "macOS", "Linux")
     """
-    user_agent = user_agent.lower()
-    if 'win' in user_agent:
+    ua_lower = user_agent.lower()
+    
+    if 'windows' in ua_lower:
         return '"Windows"'
-    elif 'mac' in user_agent:
+    elif 'macintosh' in ua_lower or 'mac os' in ua_lower:
         return '"macOS"'
-    elif 'linux' in user_agent:
+    elif 'linux' in ua_lower:
         return '"Linux"'
-    elif 'android' in user_agent:
-        return '"Android"'
-    elif 'iphone' in user_agent or 'ipad' in user_agent:
-        return '"iOS"'
-    else:
-        return '"Unknown"'
+    
+    return '"Windows"'
 
 def get_browser_info(user_agent: str) -> Tuple[str, str, str]:
     """
-    Obtém informações do navegador a partir do User-Agent.
-
+    Obtém informações para o header Sec-Ch-Ua a partir do User-Agent.
+    
+    O Sec-Ch-Ua é um header específico que indica a marca do navegador em um formato próprio:
+    - Firefox: "Firefox";v="120"
+    - Chrome: "Google Chrome";v="120", "Not=A?Brand";v="8", "Chromium";v="120"
+    - Edge: "Microsoft Edge";v="120", "Not=A?Brand";v="8", "Chromium";v="120"
+    
     Args:
-        user_agent (str): String do User-Agent.
+        user_agent (str): String do User-Agent gerado pelo fake-useragent
 
     Returns:
-        Tuple[str, str, str]: Tupla contendo nome do navegador, marca e engine.
+        Tuple[str, str, str]: Tupla contendo os componentes do Sec-Ch-Ua
     """
     ua_lower = user_agent.lower()
-    if 'chrome' in ua_lower:
-        version = random.randint(90, 130)
-        return (f'"Google Chrome";v="{version}"', f'"Not=A?Brand";v="{random.randint(8, 99)}"', f'"Chromium";v="{version}"')
-    elif 'firefox' in ua_lower:
-        version = random.randint(90, 120)
+    version = random.randint(90, 130)
+    
+    if 'firefox' in ua_lower:
         return (f'"Firefox";v="{version}"', '', '')
-    elif 'safari' in ua_lower:
-        version = f"{random.randint(13, 16)}.{random.randint(0, 9)}"
-        return (f'"Safari";v="{version}"', '', '')
     elif 'edge' in ua_lower:
-        version = random.randint(90, 130)
         return (f'"Microsoft Edge";v="{version}"', f'"Not=A?Brand";v="{random.randint(8, 99)}"', f'"Chromium";v="{version}"')
-    else:
-        return ('"Unknown"', '', '')
+    else:  # chrome ou fallback
+        return (f'"Google Chrome";v="{version}"', f'"Not=A?Brand";v="{random.randint(8, 99)}"', f'"Chromium";v="{version}"')
 
 def generate_client_version() -> str:
     """
-    Gera um client-version no formato UUID v4.
+    Gera um identificador de versão do cliente no formato UUID.
     
+    A Twitch usa este valor para identificar diferentes versões do cliente web.
+    É gerado um novo UUID v4 a cada requisição.
+
     Returns:
-        str: Client-version no formato UUID v4.
+        str: UUID v4 como string
     """
     return str(uuid.uuid4())
 
 def generate_fingerprint() -> Dict[str, str]:
     """
-    Gera um fingerprint completo com todos os headers necessários.
+    Gera um conjunto completo de headers (fingerprint) para a API da Twitch.
+    
+    O fingerprint inclui todos os headers necessários para simular um navegador real:
+    - Accept: Tipos de conteúdo aceitos
+    - Accept-Encoding: Métodos de compressão suportados
+    - Accept-Language: Idiomas aceitos
+    - Referer: Página de origem
+    - User-Agent: Identificação do navegador
+    - Sec-Ch-Ua: Marca e versão do navegador
+    - Sec-Ch-Ua-Mobile: Indicador de dispositivo móvel
+    - Sec-Ch-Ua-Platform: Sistema operacional
+    - Client-Id: ID do cliente Twitch
+    - Device-Id: ID único do dispositivo
+    - Client-Version: Versão do cliente
 
     Returns:
-        Dict[str, str]: Dicionário contendo todos os headers do fingerprint.
+        Dict[str, str]: Dicionário com todos os headers necessários
     """
     user_agent = ua.random
     platform = get_platform_from_user_agent(user_agent)
@@ -121,28 +122,28 @@ def generate_fingerprint() -> Dict[str, str]:
             "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
             "application/json, text/plain, */*",
             "*/*"
-        ]),
+        ]).strip(),
         'Accept-Encoding': random.choice([
             "gzip, deflate, br",
             "gzip, deflate",
             "br",
             "identity"
-        ]),
+        ]).strip(),
         'Accept-Language': random.choice([
             "en-US,en;q=0.9",
             "es-ES,es;q=0.9",
             "fr-FR,fr;q=0.9",
             "pt-BR,pt;q=0.9",
             "de-DE,de;q=0.9"
-        ]),
+        ]).strip(),
         'Referer': random.choice([
             "https://www.twitch.tv/",
             "https://www.twitch.tv/directory",
             "https://www.twitch.tv/directory/all",
             "https://www.twitch.tv/game"
-        ]),
-        'User-Agent': user_agent,
-        'Sec-Ch-Ua': ', '.join(filter(None, browser_info)),
+        ]).strip(),
+        'User-Agent': user_agent.strip(),
+        'Sec-Ch-Ua': ', '.join(filter(None, browser_info)).strip(),
         'Sec-Ch-Ua-Mobile': is_mobile,
         'Sec-Ch-Ua-Platform': platform,
         'Client-Id': CLIENT_ID,
@@ -152,31 +153,22 @@ def generate_fingerprint() -> Dict[str, str]:
 
 def get_fingerprint() -> Dict[str, str]:
     """
-    Retorna um novo fingerprint gerado.
+    Função auxiliar que retorna um novo fingerprint gerado.
+    
+    Esta é a função principal que deve ser chamada por outros módulos
+    para obter um novo conjunto de headers.
 
     Returns:
-        Dict[str, str]: Novo fingerprint gerado.
+        Dict[str, str]: Novo fingerprint com todos os headers
     """
     return generate_fingerprint()
 
 def set_fingerprint(fingerprint: Dict[str, str]):
     """
-    Define um novo fingerprint (mantida para compatibilidade).
+    Função mantida para compatibilidade com versões anteriores.
+    Não tem efeito no comportamento atual do módulo.
 
     Args:
-        fingerprint (Dict[str, str]): Novo fingerprint a ser definido.
+        fingerprint (Dict[str, str]): Fingerprint a ser definido (ignorado)
     """
-    pass  # Não armazena mais globalmente
-
-if __name__ == "__main__":
-    print(Fore.YELLOW + "\n⏳ Gerando 3 fingerprints diferentes para teste:" + Style.RESET_ALL)
-    print("=" * 70)
-    
-    for i in range(3):
-        print(f"\n{Fore.GREEN}✅ Fingerprint {i+1} gerado com sucesso{Style.RESET_ALL}:\n")
-        fingerprint = get_fingerprint()
-        for key, value in fingerprint.items():
-            print(f"{key}: {value}")
-        print("=" * 70)
-    
-    time.sleep(60)
+    pass
