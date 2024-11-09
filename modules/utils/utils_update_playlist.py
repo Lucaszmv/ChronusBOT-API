@@ -86,9 +86,17 @@ def obter_playlist_qualidade(url: str, fingerprint: dict, bot_id: int = None) ->
     headers = {
         "User-Agent": fingerprint.get('User-Agent'),
         "Client-ID": fingerprint.get('Client-Id'),
-        "X-Device-Id": fingerprint.get('Device-Id')
+        "X-Device-Id": fingerprint.get('Device-Id'),
+        "Accept": "application/x-mpegURL, application/vnd.apple.mpegurl, application/json, text/plain",
+        "Accept-Language": "pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Origin": "https://www.twitch.tv",
+        "Referer": "https://www.twitch.tv/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
     }
-    
+
     try:
         response = session.get(url, headers=headers)
         response.raise_for_status()
@@ -258,7 +266,7 @@ def main():
         print("=" * 70)
         print(f"Todos os dados foram registrados no arquivo de log: {log_file}")
         print("=" * 70)
-        time.sleep(60)
+        time.sleep(5)
         
     except Exception as e:
         logging.error(f"Erro durante a execução: {e}")
