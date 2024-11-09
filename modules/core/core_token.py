@@ -26,7 +26,6 @@ init()
 # Importações locais
 try:
     from modules.core.core_session import get_session, session_manager
-    from modules.core.core_fingerprint import CLIENT_ID, get_fingerprint
 except ImportError as e:
     logging.error(f"Erro ao importar módulos locais: {e}")
     print(f"Erro ao importar módulos. Verifique o arquivo de log.")
@@ -48,7 +47,7 @@ def get_playback_access_token_headers(fingerprint: Dict[str, str]) -> Dict[str, 
         'Accept-Language': fingerprint.get('Accept-Language'),
         'Authorization': 'undefined',
         'Cache-Control': 'no-cache',
-        'Client-Id': fingerprint.get('Client-Id', CLIENT_ID),
+        'Client-Id': fingerprint.get('Client-Id'),
         'Content-Type': 'text/plain; charset=UTF-8',
         'Device-Id': fingerprint.get('Device-Id'),
         'Origin': 'https://www.twitch.tv',

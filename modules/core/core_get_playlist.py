@@ -26,21 +26,20 @@ from colorama import Fore, Style, init
 init()
 
 try:
-    from modules.core.core_session import get_session
+    from modules.core.core_session import get_session, session_manager
     from modules.core.core_token import obter_playback_access_token
 except ImportError as e:
     logging.error(f"Erro ao importar módulos: {e}")
     print(f"Erro ao importar módulos. Verifique o arquivo de log.")
     sys.exit(1)
 
-def obter_playlist_m3u8(canal_nome: str, token_data: dict, fingerprint: dict, bot_id: int = None) -> Optional[str]:
+def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -> Optional[str]:
     """
     Obtém a playlist M3U8 para um canal específico da Twitch.
 
     Args:
         canal_nome (str): Nome do canal da Twitch.
         token_data (dict): Dados do token de acesso.
-        fingerprint (dict): Dados do fingerprint.
         bot_id (int, optional): ID do bot para usar sua sessão específica.
 
     Returns:
@@ -48,6 +47,10 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, fingerprint: dict, bo
     """
     token = token_data['value']
     signature = token_data['signature']
+    
+    # Obter a sessão e fingerprint do session_manager
+    session = get_session(bot_id)
+    fingerprint = session_manager.get_fingerprint(bot_id)
 
     url = f"https://usher.ttvnw.net/api/channel/hls/{canal_nome}.m3u8"
     
@@ -64,22 +67,18 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, fingerprint: dict, bo
     }
     
     headers = {
-        "User-Agent": fingerprint.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'),
+        "User-Agent": fingerprint.get('User-Agent'),
         "Client-ID": fingerprint.get('Client-Id'),
         "X-Device-Id": fingerprint.get('Device-Id')
     }
     
     try:
-        # Obter a sessão específica do bot ou criar uma nova
-        session = get_session(bot_id) if bot_id is not None else requests.Session()
-        
         # Log da requisição
         logging.info(f"Obtendo playlist M3U8 para o canal: {canal_nome}")
         logging.info(f"Headers da requisição: {json.dumps(headers, indent=2)}")
         logging.info(f"Parâmetros da requisição: {json.dumps(params, indent=2)}")
         
         response = session.get(url, params=params, headers=headers)
-        
         response.raise_for_status()
         
         # Log da resposta
@@ -98,8 +97,6 @@ def testar_obter_playlist_m3u8(canal: str):
     """
     Testa a função de obtenção da playlist M3U8 para um canal específico.
     """
-    from modules.core.core_session import session_manager
-    
     logging.info(f"Testando obtenção de playlist M3U8 para o canal: {canal}")
     print(f"{Fore.YELLOW}Testando canal: {canal}{Style.RESET_ALL}")
     print("=" * 70)
@@ -117,12 +114,6 @@ def testar_obter_playlist_m3u8(canal: str):
         print(f"{Fore.YELLOW}⚠️ Nenhum proxy configurado{Style.RESET_ALL}")
     print("=" * 70)
     
-    print(f"{Fore.CYAN}Sessão de teste criada com bot_id: {bot_id}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}Fingerprint gerado:{Style.RESET_ALL}")
-    for key, value in fingerprint.items():
-        print(f"{Fore.YELLOW}{key}:{Style.RESET_ALL} {value}")
-    print("=" * 70)
-    
     # Obter token de acesso usando a sessão criada
     token_data = obter_playback_access_token(canal, fingerprint, bot_id)
     
@@ -132,7 +123,7 @@ def testar_obter_playlist_m3u8(canal: str):
         return
     
     # Obter playlist usando a mesma sessão
-    playlist = obter_playlist_m3u8(canal, token_data, fingerprint, bot_id)
+    playlist = obter_playlist_m3u8(canal, token_data, bot_id)
     
     if playlist:
         logging.info(f"{Fore.GREEN}✅ Playlist M3U8 obtida com sucesso para o canal {canal}{Style.RESET_ALL}")
