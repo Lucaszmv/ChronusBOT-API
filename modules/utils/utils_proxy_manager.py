@@ -1,13 +1,11 @@
 """
 Módulo para gerenciamento simples de proxies.
-
-Este módulo contém a classe ProxyManager responsável por carregar
-e distribuir proxies para os bots de forma rotativa.
 """
 
 import os
 import random
 import logging
+from pathlib import Path
 from typing import Optional, List, Dict
 from colorama import Fore, Style, init
 
@@ -22,11 +20,13 @@ class ProxyManager:
         Inicializa o gerenciador de proxies.
         
         Args:
-            proxy_file (str): Caminho para o arquivo de proxies.
+            proxy_file (str): Nome do arquivo de proxies
         """
-        self.proxy_file = proxy_file
+        # Obtém o caminho da raiz do projeto
+        root_dir = str(Path(__file__).parent.parent.parent)
+        self.proxy_file = os.path.join(root_dir, proxy_file)
         self.proxies: List[str] = []
-        self.bot_proxies: Dict[int, str] = {}  # Mapeia bot_id -> proxy
+        self.bot_proxies: Dict[int, str] = {}
         self.load_proxies()
 
     def load_proxies(self) -> None:
