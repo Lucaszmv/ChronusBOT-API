@@ -106,6 +106,12 @@ def testar_obter_playlist_m3u8(canal: str):
     session = session_manager.get_session(bot_id)
     fingerprint = session_manager.get_fingerprint(bot_id)
     
+    print(f"{Fore.CYAN}Sessão de teste criada com bot_id: {bot_id}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Fingerprint gerado:{Style.RESET_ALL}")
+    for key, value in fingerprint.items():
+        print(f"{Fore.YELLOW}{key}:{Style.RESET_ALL} {value}")
+    print("=" * 70)
+    
     # Exibir informações do proxy
     if session.proxies:
         proxy_info = session.proxies.get('http', 'Nenhum proxy configurado')
