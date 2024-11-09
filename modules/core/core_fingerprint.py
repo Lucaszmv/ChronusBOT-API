@@ -178,4 +178,5 @@ if __name__ == "__main__":
         for key, value in fingerprint.items():
             print(f"{key}: {value}")
         print("=" * 70)
-time.sleep(60)
+    
+    time.sleep(60)
