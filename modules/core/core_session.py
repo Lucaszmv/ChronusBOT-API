@@ -81,9 +81,14 @@ class SessionManager:
                 'https': proxy
             }
         
-        session.verify = True
+        # Desativa verificação SSL
+        session.verify = False
         session.trust_env = False
         session.timeout = (5, 10)
+        
+        # Suprime avisos SSL
+        import urllib3
+        urllib3.disable_warnings()
         
         return session
     

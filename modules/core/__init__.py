@@ -13,6 +13,10 @@ Imports:
 import sys
 import os
 from colorama import Fore, Style, init
+import urllib3
+
+# Suprime avisos SSL globalmente
+urllib3.disable_warnings()
 
 # Adicionar o diretório raiz do projeto ao PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))

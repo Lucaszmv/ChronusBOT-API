@@ -10,6 +10,7 @@ Imports:
     utils_segment_download: Download e processamento de segmentos de stream.
     utils_update_playlist: Atualização e gerenciamento de playlists M3U8.
     twitch_stream_checker: Verificação de status de streams da Twitch.
+    utils_logger: Módulo para gerenciamento centralizado de logs.
 
 Exports:
     ProxyManager: Classe para gerenciamento de proxies.
@@ -19,6 +20,8 @@ Exports:
     iniciar_downloader: Inicia processamento da fila em thread separada.
     atualizar_playlist: Atualiza playlist M3U8 de um canal.
     verificar_canal_online: Verifica se um canal da Twitch está online.
+    get_logger: Obtém um logger configurado com o nome especificado.
+    logger_manager: Criar uma instância global do LoggerManager.
 """
 
 import sys
@@ -46,9 +49,11 @@ from modules.utils.utils_update_playlist import (
     atualizar_playlist
 )
 
-from modules.utils.twitch_stream_checker import (
+from modules.utils.utils_stream_checker import (
     verificar_canal_online
 )
+
+from modules.utils.utils_logger import get_logger, logger_manager
 
 __all__ = [
     'ProxyManager',
@@ -57,7 +62,9 @@ __all__ = [
     'processar_fila_download',
     'iniciar_downloader',
     'atualizar_playlist',
-    'verificar_canal_online'
+    'verificar_canal_online',
+    'get_logger',
+    'logger_manager'
 ]
 
 # Testando importações

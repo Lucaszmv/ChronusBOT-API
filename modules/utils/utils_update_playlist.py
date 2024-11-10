@@ -155,6 +155,9 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None):
     ultima_playlist = ""
     fila_segmentos = deque(maxlen=100)
     
+    # Criar detector de anúncios
+    ad_detector = create_ad_detector(max_ad_pods=3)  # Define limite de 3 pods de anúncios
+    
     # Obter playlist inicial
     playlist_m3u8 = obter_playlist_m3u8(canal_nome, token_data, bot_id)
     if not playlist_m3u8:
@@ -183,6 +186,16 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None):
                 time.sleep(2)
                 continue
 
+            # Processar playlist para detectar anúncios
+            ad_detector.process_playlist(playlist_qualidade)
+            
+            print("\n=== Playlist M3U8 (10 primeiras linhas) ===")
+            linhas = playlist_qualidade.strip().split('\n')
+            for i, linha in enumerate(linhas[:10], 1):
+                linha_truncada = linha[:100] + "..." if len(linha) > 100 else linha
+                print(f"{i:2}: {linha_truncada}")
+            print("=" * 50 + "\n")
+
             novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
             if not novos_segmentos:
                 print(f"{WARNING_COLOR}Nenhum segmento encontrado na playlist{RESET}")
@@ -199,7 +212,7 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None):
                         
                 if segmentos_adicionados > 0:
                     ultima_playlist = playlist_qualidade
-                    print(f"{MAGENTA_COLOR}Playlist atualizada! +{segmentos_adicionados} segmentos{RESET}\n")
+                    print(f"{MAGENTA_COLOR}Playlist atualizada! +{segmentos_adicionados} segmentos{RESET}")
                 else:
                     print(f"{WARNING_COLOR}Nenhum segmento novo encontrado{RESET}")
             else:
@@ -207,6 +220,9 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None):
 
             time.sleep(2)
 
+        except KeyboardInterrupt:
+            print(f"\n{INFO_COLOR}Encerrando atualização de playlist...{RESET}")
+            return True
         except Exception as e:
             print(f"{ERROR_COLOR}Erro ao atualizar playlist: {e}{RESET}")
             time.sleep(2)
