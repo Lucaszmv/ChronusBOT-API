@@ -52,7 +52,17 @@ def simular_download_segmento(url, bot_id=None):
         fingerprint = session_manager.get_fingerprint(bot_id) if bot_id else {}
         
         headers = {
-            'User-Agent': fingerprint.get('User-Agent'),
+            'Accept': '*/*',
+            'Accept-Encoding': fingerprint.get('Accept-Encoding'),
+            'Accept-Language': fingerprint.get('Accept-Language'),
+            'Connection': 'keep-alive',
+            'Origin': 'https://www.twitch.tv',
+            'Priority': 'u=4',
+            'Referer': 'https://www.twitch.tv/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'cross-site',
+            'User-Agent': fingerprint.get('User-Agent')
         }
 
         response = session.get(url, headers=headers, timeout=5)
