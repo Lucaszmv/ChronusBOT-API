@@ -2,12 +2,14 @@
 Módulo principal do pacote utils.
 
 Este módulo inicializa e expõe as funcionalidades utilitárias do ChronusBOT,
-incluindo gerenciamento de proxies, download de segmentos e atualização de playlists.
+incluindo gerenciamento de proxies, download de segmentos, atualização de playlists
+e verificação de status de streams.
 
 Imports:
     utils_proxy_manager: Gerenciamento de proxies para os bots.
     utils_segment_download: Download e processamento de segmentos de stream.
     utils_update_playlist: Atualização e gerenciamento de playlists M3U8.
+    twitch_stream_checker: Verificação de status de streams da Twitch.
 
 Exports:
     ProxyManager: Classe para gerenciamento de proxies.
@@ -16,6 +18,7 @@ Exports:
     processar_fila_download: Processa fila de segmentos para download.
     iniciar_downloader: Inicia processamento da fila em thread separada.
     atualizar_playlist: Atualiza playlist M3U8 de um canal.
+    verificar_canal_online: Verifica se um canal da Twitch está online.
 """
 
 import sys
@@ -43,13 +46,18 @@ from modules.utils.utils_update_playlist import (
     atualizar_playlist
 )
 
+from modules.utils.twitch_stream_checker import (
+    verificar_canal_online
+)
+
 __all__ = [
     'ProxyManager',
     'create_proxy_manager',
     'simular_download_segmento',
     'processar_fila_download',
     'iniciar_downloader',
-    'atualizar_playlist'
+    'atualizar_playlist',
+    'verificar_canal_online'
 ]
 
 # Testando importações
@@ -72,4 +80,8 @@ if __name__ == "__main__":
     print(Fore.CYAN + "\nVerificando utils_update_playlist:" + Style.RESET_ALL)
     print(f"✓ atualizar_playlist: {atualizar_playlist.__name__}")
     
-    print("\n" + "=" * 70) 
+    # Testando importações do twitch_stream_checker
+    print(Fore.CYAN + "\nVerificando twitch_stream_checker:" + Style.RESET_ALL)
+    print(f"✓ verificar_canal_online: {verificar_canal_online.__name__}")
+    
+    print("\n" + "=" * 70)

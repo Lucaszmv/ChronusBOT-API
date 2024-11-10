@@ -60,44 +60,83 @@ def main():
     while True:
         try:
             canal_nome = input(f"{INFO_COLOR}Digite o nome do canal da Twitch: {RESET}")
+            
+            # Verifica se o canal está online
+            print(f"{INFO_COLOR}Verificando se o canal está online...{RESET}")
+            if not verificar_canal_online(canal_nome):
+                print(f"{ERROR_COLOR}O canal {canal_nome} não está online no momento.{RESET}")
+                continue
+                
+            print(f"{SUCCESS_COLOR}Canal {canal_nome} está online!{RESET}")
             bot_id = 1
             
             print(f"{INFO_COLOR}Inicializando bot para o canal: {canal_nome}{RESET}")
             
-            fingerprint = session_manager.get_fingerprint(bot_id)
-            if not fingerprint:
-                fingerprint = get_fingerprint()
+            sessao_tentativas = 0
+            max_sessoes = 3  # Número máximo de sessões diferentes a tentar
+            sucesso = False
             
-            # Obtendo token de acesso
-            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
-            if token_data:
-                print(f"{SUCCESS_COLOR}Token de acesso obtido com sucesso!{RESET}")
-                
-                # Obtendo playlist M3U8
-                playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-                if playlist:
-                    print(f"{SUCCESS_COLOR}Playlist M3U8 obtida com sucesso!{RESET}")
-                    print(f"{INFO_COLOR}Iniciando download dos segmentos...{RESET}")
-                    
-                    # Iniciar processo de atualização de playlist
-                    print(f"{INFO_COLOR}Iniciando atualização contínua da playlist...{RESET}")
-                    resultado = atualizar_playlist(canal_nome, token_data, bot_id)
-                    
-                    if not resultado:
-                        print(f"{ERROR_COLOR}Falha ao atualizar playlist{RESET}")
+            while sessao_tentativas < max_sessoes and not sucesso:
+                # Inicializa ou reinicializa sessão
+                if sessao_tentativas > 0:
+                    print(f"{WARNING_COLOR}Iniciando nova sessão ({sessao_tentativas + 1} de {max_sessoes})...{RESET}")
+                    session_manager.close_session(bot_id)
+                    fingerprint = get_fingerprint()
                 else:
-                    print(f"{ERROR_COLOR}Falha ao obter playlist M3U8{RESET}")
-            else:
-                print(f"{ERROR_COLOR}Falha ao obter token de acesso{RESET}")
+                    fingerprint = session_manager.get_fingerprint(bot_id)
+                    if not fingerprint:
+                        fingerprint = get_fingerprint()
+                
+                # Tenta 3 vezes com a mesma sessão
+                tentativas_conexao = 0
+                max_tentativas_conexao = 3
+                
+                while tentativas_conexao < max_tentativas_conexao and not sucesso:
+                    try:
+                        if tentativas_conexao > 0:
+                            print(f"{WARNING_COLOR}Tentativa {tentativas_conexao + 1} de {max_tentativas_conexao} com a sessão atual...{RESET}")
+                            time.sleep(5)
+                        
+                        token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+                        if token_data:
+                            print(f"{SUCCESS_COLOR}Token de acesso obtido com sucesso!{RESET}")
+                            
+                            playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
+                            if playlist:
+                                print(f"{SUCCESS_COLOR}Playlist M3U8 obtida com sucesso!{RESET}")
+                                print(f"{INFO_COLOR}Iniciando download dos segmentos...{RESET}")
+                                
+                                print(f"{INFO_COLOR}Iniciando atualização contínua da playlist...{RESET}")
+                                resultado = atualizar_playlist(canal_nome, token_data, bot_id)
+                                
+                                if resultado:
+                                    sucesso = True
+                                else:
+                                    raise Exception("Falha ao atualizar playlist")
+                            else:
+                                raise Exception("Falha ao obter playlist M3U8")
+                        else:
+                            raise Exception("Falha ao obter token de acesso")
+
+                    except Exception as e:
+                        tentativas_conexao += 1
+                        if tentativas_conexao < max_tentativas_conexao:
+                            print(f"{WARNING_COLOR}Erro: {e}. Tentando novamente...{RESET}")
+                        else:
+                            print(f"{ERROR_COLOR}Todas as tentativas falharam com a sessão atual. Último erro: {e}{RESET}")
+                
+                if not sucesso:
+                    sessao_tentativas += 1
+
+            if not sucesso:
+                print(f"{ERROR_COLOR}Não foi possível estabelecer conexão após tentar com {max_sessoes} sessões diferentes.{RESET}")
+                time.sleep(2)
 
         except KeyboardInterrupt:
             print(f"\n{INFO_COLOR}Encerrando o programa...{RESET}")
             logging.info("Programa encerrado pelo usuário.")
             session_manager.close_all()
             break
-        except Exception as e:
-            print(f"{ERROR_COLOR}Erro durante a execução: {e}{RESET}")
-            time.sleep(5)
 
 if __name__ == "__main__":
     try:
@@ -108,6 +147,7 @@ if __name__ == "__main__":
         from modules.core.core_session import session_manager
         from modules.utils.utils_update_playlist import atualizar_playlist
         from modules.utils.utils_segment_download import iniciar_downloader
+        from modules.utils.twitch_stream_checker import verificar_canal_online
     except ImportError as e:
         print(f"{ERROR_COLOR}Erro ao importar módulos: {e}{RESET}")
         sys.exit(1)
