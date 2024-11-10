@@ -53,8 +53,6 @@ def simular_download_segmento(url, bot_id=None):
         
         headers = {
             'User-Agent': fingerprint.get('User-Agent'),
-            'Accept': fingerprint.get('Accept'),
-            'Client-ID': fingerprint.get('Client-Id'),
         }
 
         response = session.get(url, headers=headers, timeout=5)
