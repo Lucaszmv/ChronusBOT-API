@@ -1,17 +1,5 @@
 """
 Módulo para atualização e gerenciamento de playlists M3U8 da Twitch.
-
-Este módulo contém funções para extrair, atualizar e processar playlists M3U8,
-incluindo a extração de segmentos, detecção de anúncios e gerenciamento da
-fila de download.
-
-Functions:
-    extrair_links_qualidade: Extrai links de qualidade da playlist principal.
-    obter_link_aleatorio: Seleciona um link de qualidade aleatório.
-    obter_playlist_qualidade: Obtém a playlist de uma qualidade específica.
-    extrair_segmentos_ts: Extrai segmentos .ts da playlist.
-    exibir_playlist_atualizada: Exibe a playlist atual no console.
-    atualizar_playlist: Gerencia o processo de atualização contínua da playlist.
 """
 
 import random
@@ -21,11 +9,22 @@ from typing import List, Set, Optional
 import requests
 import os
 import sys
-from colorama import Fore, Style
+from colorama import Fore, Style, init
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque
 import json
+
+# Inicializa o Colorama
+init()
+
+# Configurações de cores
+INFO_COLOR = Fore.CYAN
+SUCCESS_COLOR = Fore.GREEN
+WARNING_COLOR = Fore.YELLOW
+ERROR_COLOR = Fore.RED
+RESET = Style.RESET_ALL
+MAGENTA_COLOR = Fore.MAGENTA
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -56,6 +55,7 @@ if not logger.handlers:
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
+
 
 def extrair_links_qualidade(playlist: str) -> List[str]:
     """
@@ -146,93 +146,67 @@ def exibir_playlist_atualizada(playlist: str, max_linhas: int = 10) -> None:
         print(f"   ... ({len(linhas) - max_linhas} linhas omitidas)")
     print()
 
-def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, max_atualizacoes: int = 2) -> dict:
+def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None):
     """
-    Atualiza a playlist um número limitado de vezes.
-    
-    Args:
-        canal_nome (str): Nome do canal da Twitch
-        token_data (dict): Dados do token de acesso
-        bot_id (int, optional): ID do bot para usar sua sessão específica
-        max_atualizacoes (int): Número máximo de atualizações a realizar
-        
-    Returns:
-        dict: Estatísticas da atualização {
-            'atualizacoes': int,
-            'segmentos_encontrados': int,
-            'tentativas': int,
-            'ultima_playlist': str
-        }
+    Atualiza continuamente a playlist e adiciona novos segmentos à fila.
     """
-    fingerprint = session_manager.get_fingerprint(bot_id) if bot_id else None
+    fingerprint = session_manager.get_fingerprint(bot_id)
+    segmentos_conhecidos = set()
+    ultima_playlist = ""
+    fila_segmentos = deque(maxlen=100)
     
-    segmentos_conhecidos: Set[str] = set()
-    fila_segmentos = deque()
-    
-    # Iniciar o simulador de download em uma thread separada
-    iniciar_downloader(fila_segmentos, bot_id)
-
-    playlist_principal = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-    if not playlist_principal:
-        logger.error("Falha ao obter a playlist principal")
+    # Obter playlist inicial
+    playlist_m3u8 = obter_playlist_m3u8(canal_nome, token_data, bot_id)
+    if not playlist_m3u8:
+        print(f"{ERROR_COLOR}Falha ao obter playlist inicial{RESET}")
         return None
 
-    links_qualidade = extrair_links_qualidade(playlist_principal)
+    # Extrair link de qualidade
+    links_qualidade = extrair_links_qualidade(playlist_m3u8)
     if not links_qualidade:
-        logger.error("Nenhum link de qualidade encontrado")
+        print(f"{ERROR_COLOR}Nenhum link de qualidade encontrado{RESET}")
         return None
 
     link_qualidade = obter_link_aleatorio(links_qualidade)
     if not link_qualidade:
-        logger.error("Falha ao selecionar qualidade")
+        print(f"{ERROR_COLOR}Falha ao selecionar qualidade{RESET}")
         return None
-    
-    ultima_playlist = ""
-    ad_detector = create_ad_detector()
-    atualizacoes = 0
-    tentativas = 0
-    max_tentativas = 10
 
-    while atualizacoes < max_atualizacoes and tentativas < max_tentativas:
-        playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
-        if not playlist_qualidade:
-            logger.warning(f"Tentativa {tentativas + 1}: Falha ao obter playlist")
-            time.sleep(2)
-            tentativas += 1
-            continue
+    # Iniciar downloader em thread separada
+    iniciar_downloader(fila_segmentos, bot_id)
 
-        novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
-        if not novos_segmentos:
-            logger.warning(f"Tentativa {tentativas + 1}: Nenhum segmento encontrado")
-            time.sleep(2)
-            tentativas += 1
-            continue
+    while True:
+        try:
+            playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
+            if not playlist_qualidade:
+                print(f"{WARNING_COLOR}Tentativa de atualizar playlist falhou{RESET}")
+                time.sleep(2)
+                continue
 
-        if playlist_qualidade != ultima_playlist:
-            segmentos_adicionados = 0
-            for segmento in novos_segmentos:
-                if segmento not in segmentos_conhecidos:
-                    segmentos_conhecidos.add(segmento)
-                    fila_segmentos.append(segmento)
-                    segmentos_adicionados += 1
-                    
-            if segmentos_adicionados > 0:
-                ultima_playlist = playlist_qualidade
-                ad_detector.process_playlist(playlist_qualidade)
-                atualizacoes += 1
-                logger.info(f"Adicionados {segmentos_adicionados} novos segmentos")
+            novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
+            if not novos_segmentos:
+                print(f"{WARNING_COLOR}Nenhum segmento encontrado na playlist{RESET}")
+                time.sleep(2)
+                continue
+
+            if playlist_qualidade != ultima_playlist:
+                segmentos_adicionados = 0
+                for segmento in novos_segmentos:
+                    if segmento not in segmentos_conhecidos:
+                        segmentos_conhecidos.add(segmento)
+                        fila_segmentos.append(segmento)
+                        segmentos_adicionados += 1
+                        
+                if segmentos_adicionados > 0:
+                    ultima_playlist = playlist_qualidade
+                    print(f"{MAGENTA_COLOR}Playlist atualizada! +{segmentos_adicionados} segmentos{RESET}\n")
+                else:
+                    print(f"{WARNING_COLOR}Nenhum segmento novo encontrado{RESET}")
             else:
-                logger.warning("Nenhum segmento novo encontrado")
-                tentativas += 1
-        else:
-            logger.warning("Playlist não mudou desde última verificação")
-            tentativas += 1
+                print(f"{INFO_COLOR}Aguardando novos segmentos...{RESET}")
 
-        time.sleep(2)
+            time.sleep(2)
 
-    return {
-        'atualizacoes': atualizacoes,
-        'segmentos_encontrados': len(segmentos_conhecidos),
-        'tentativas': tentativas,
-        'ultima_playlist': ultima_playlist
-    }
+        except Exception as e:
+            print(f"{ERROR_COLOR}Erro ao atualizar playlist: {e}{RESET}")
+            time.sleep(2)
