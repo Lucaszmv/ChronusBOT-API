@@ -146,18 +146,24 @@ def exibir_playlist_atualizada(playlist: str, max_linhas: int = 10) -> None:
         print(f"   ... ({len(linhas) - max_linhas} linhas omitidas)")
     print()
 
-def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None):
+def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, limite_anuncios: int = None):
     """
     Atualiza continuamente a playlist e adiciona novos segmentos à fila.
+    
+    Args:
+        canal_nome (str): Nome do canal da Twitch
+        token_data (dict): Dados do token de acesso
+        bot_id (int, optional): ID do bot
+        limite_anuncios (int, optional): Número total de anúncios a serem assistidos
     """
     fingerprint = session_manager.get_fingerprint(bot_id)
     segmentos_conhecidos = set()
     ultima_playlist = ""
     fila_segmentos = deque(maxlen=100)
     
-    # Criar detector de anúncios
-    ad_detector = create_ad_detector(max_ad_pods=3)  # Define limite de 3 pods de anúncios
-    
+    # Criar detector de anúncios com limite baseado em anúncios totais, não em pods
+    ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None)
+
     # Obter playlist inicial
     playlist_m3u8 = obter_playlist_m3u8(canal_nome, token_data, bot_id)
     if not playlist_m3u8:

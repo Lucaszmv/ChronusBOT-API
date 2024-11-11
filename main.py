@@ -57,6 +57,18 @@ def main():
             canal_nome = input(f"{INFO_COLOR}Digite o nome do canal da Twitch: {RESET}")
             logger.info(f"Canal solicitado: {canal_nome}")
             
+            # Nova entrada para o limite de anúncios
+            while True:
+                try:
+                    limite_anuncios = int(input(f"{INFO_COLOR}Digite quantos anúncios deseja assistir (total): {RESET}"))
+                    if limite_anuncios > 0:
+                        break
+                    print(f"{ERROR_COLOR}Por favor, digite um número maior que zero.{RESET}")
+                except ValueError:
+                    print(f"{ERROR_COLOR}Por favor, digite um número válido.{RESET}")
+            
+            logger.info(f"Limite de anúncios definido: {limite_anuncios}")
+            
             print(f"{INFO_COLOR}Verificando se o canal está online...{RESET}")
             if not verificar_canal_online(canal_nome):
                 logger.warning(f"Canal {canal_nome} não está online")
@@ -128,7 +140,7 @@ def main():
                                 for i in range(2):
                                     logger.info(f"Atualizando playlist - Tentativa {i+1}")
                                     log_request_details(f"Atualizar Playlist {i+1}", playlist_headers, playlist_params)
-                                    resultado = atualizar_playlist(canal_nome, token_data, bot_id)
+                                    resultado = atualizar_playlist(canal_nome, token_data, bot_id, limite_anuncios=limite_anuncios)
                                     time.sleep(2)  # Espera entre atualizações
                                 
                                 if resultado:

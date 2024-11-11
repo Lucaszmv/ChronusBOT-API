@@ -43,27 +43,27 @@ class AdDetector:
         current_pod_info (dict): Informações sobre o pod atual.
         current_pod_ad_count (int): Contador de anúncios no pod atual.
         total_ad_pods_viewed (int): Total de pods de anúncios visualizados.
-        max_ad_pods (int): Limite máximo de pods de anúncios.
+        max_total_ads (int): Limite máximo de anúncios individuais a processar.
     """
 
-    def __init__(self, max_ad_pods):
+    def __init__(self, max_total_ads=None):
         """
         Inicializa o detector de anúncios.
 
         Args:
-            max_ad_pods (int): Número máximo de pods de anúncios a processar.
+            max_total_ads (int, optional): Número máximo de anúncios individuais a processar.
         """
         self.ad_segments = []
         self.last_segment = None
         self.in_ad_break = False
         self.ad_start_time = None
-        self.last_ad_pod_signature = None  # Assinatura única para o último pod de anúncio
-        self.total_ads_viewed = 0  # Contador total de anúncios individuais
-        self.detected_ad_pods = set()  # Novo conjunto para rastrear pods de anúncios detectados
-        self.current_pod_info = None  # Informações do pod atual
-        self.current_pod_ad_count = 0  # Contador de anúncios no pod atual
+        self.last_ad_pod_signature = None
+        self.total_ads_viewed = 0
+        self.detected_ad_pods = set()
+        self.current_pod_info = None
+        self.current_pod_ad_count = 0
         self.total_ad_pods_viewed = 0
-        self.max_ad_pods = max_ad_pods  # Novo atributo para armazenar o limite
+        self.max_total_ads = max_total_ads
 
     def process_playlist(self, playlist_content: str):
         """
@@ -158,7 +158,8 @@ class AdDetector:
             self.current_pod_info = None
             self.current_pod_ad_count = 0
             
-            if self.total_ad_pods_viewed >= self.max_ad_pods:
+            # Verifica se atingiu o limite total de anúncios
+            if self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
                 self.print_limit_reached()
                 sys.exit(0)
 
@@ -196,10 +197,10 @@ class AdDetector:
         sys.stdout.flush()
 
     def print_limit_reached(self):
-        message = f"Limite de {self.max_ad_pods} pods de anúncios atingido. Encerrando o bot."
+        message = f"Limite de {self.max_total_ads} anúncios atingido. Encerrando o bot."
         print(Fore.RED + message + Style.RESET_ALL)
         logger.info(message)
         sys.stdout.flush()
 
-def create_ad_detector(max_ad_pods=2):
-    return AdDetector(max_ad_pods)
+def create_ad_detector(max_total_ads=None):
+    return AdDetector(max_total_ads=max_total_ads)
