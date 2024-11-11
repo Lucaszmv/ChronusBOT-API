@@ -58,7 +58,7 @@ class AdDetector:
         self.in_ad_break = False
         self.ad_start_time = None
         self.last_ad_pod_signature = None  # Assinatura única para o último pod de anúncio
-        self.total_ads_viewed = 0  # Novo contador cumulativo
+        self.total_ads_viewed = 0  # Contador total de anúncios individuais
         self.detected_ad_pods = set()  # Novo conjunto para rastrear pods de anúncios detectados
         self.current_pod_info = None  # Informações do pod atual
         self.current_pod_ad_count = 0  # Contador de anúncios no pod atual
@@ -147,17 +147,20 @@ class AdDetector:
         if self.in_ad_break:
             self.in_ad_break = False
             self.total_ad_pods_viewed += 1
-            self.total_ads_viewed += self.current_pod_ad_count
+            
+            # Adiciona o número de anúncios do pod atual ao total
+            pod_length = int(self.current_pod_info.get('X-TV-TWITCH-AD-POD-LENGTH', '1'))
+            self.total_ads_viewed += pod_length
+            
             self.print_ad_viewed_success(self.last_segment)
             self.ad_start_time = None
             self.ad_segments = []
             self.current_pod_info = None
             self.current_pod_ad_count = 0
             
-            # Verifica se atingiu o limite de pods de anúncios
             if self.total_ad_pods_viewed >= self.max_ad_pods:
                 self.print_limit_reached()
-                sys.exit(0)  # Encerra o programa
+                sys.exit(0)
 
     def parse_ad_info(self, line: str) -> Dict[str, str]:
         ad_info = {}
@@ -181,15 +184,15 @@ class AdDetector:
         print(Fore.GREEN + message + Style.RESET_ALL)
         logger.info(message)
 
-        total_message = f"Total de pods de anúncios visualizados: {self.total_ad_pods_viewed}"
-        print(Fore.CYAN + total_message + Style.RESET_ALL)
-        logger.info(total_message)
+        total_pods_message = f"Total de pods de anúncios visualizados: {self.total_ad_pods_viewed}"
+        print(Fore.CYAN + total_pods_message + Style.RESET_ALL)
+        logger.info(total_pods_message)
 
-        total_ads_message = f"Total de anúncios individuais visualizados: {self.total_ads_viewed}"
-        print(Fore.CYAN + total_ads_message + Style.RESET_ALL)
-        logger.info(total_ads_message)
+        # Adiciona mensagem mais destacada para o total de anúncios
+        total_ads_message = f"\n{Fore.YELLOW}>>> Anúncios assistidos no total: {self.total_ads_viewed} <<<{Style.RESET_ALL}\n"
+        print(total_ads_message)
+        logger.info(f"Anúncios assistidos no total: {self.total_ads_viewed}")
 
-        # Adicione esta linha para garantir que a mensagem seja exibida imediatamente
         sys.stdout.flush()
 
     def print_limit_reached(self):
