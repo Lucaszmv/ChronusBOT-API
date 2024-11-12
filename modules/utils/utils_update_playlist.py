@@ -146,7 +146,7 @@ def exibir_playlist_atualizada(playlist: str, max_linhas: int = 10) -> None:
         print(f"   ... ({len(linhas) - max_linhas} linhas omitidas)")
     print()
 
-def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, limite_anuncios: int = None):
+def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, limite_anuncios: int = None, check_limit_callback=None):
     """
     Atualiza continuamente a playlist e adiciona novos segmentos à fila.
     
@@ -155,14 +155,16 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
         token_data (dict): Dados do token de acesso
         bot_id (int, optional): ID do bot
         limite_anuncios (int, optional): Número total de anúncios a serem assistidos
+        check_limit_callback (callable, optional): Callback para verificar limite global
     """
     fingerprint = session_manager.get_fingerprint(bot_id)
     segmentos_conhecidos = set()
     ultima_playlist = ""
     fila_segmentos = deque(maxlen=100)
     
-    # Criar detector de anúncios com limite baseado em anúncios totais, não em pods
-    ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None)
+    # Criar detector de anúncios com limite e callback
+    ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None, 
+                                   check_limit_callback=check_limit_callback)
 
     # Obter playlist inicial
     playlist_m3u8 = obter_playlist_m3u8(canal_nome, token_data, bot_id)
@@ -223,7 +225,6 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                     print(f"{WARNING_COLOR}Nenhum segmento novo encontrado{RESET}")
             else:
                 print(f"{INFO_COLOR}Aguardando novos segmentos...{RESET}")
-
             time.sleep(2)
 
         except KeyboardInterrupt:

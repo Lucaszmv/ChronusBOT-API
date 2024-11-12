@@ -44,14 +44,16 @@ class AdDetector:
         current_pod_ad_count (int): Contador de anúncios no pod atual.
         total_ad_pods_viewed (int): Total de pods de anúncios visualizados.
         max_total_ads (int): Limite máximo de anúncios individuais a processar.
+        check_limit_callback (callable, optional): Função de callback para verificar limite global
     """
 
-    def __init__(self, max_total_ads=None):
+    def __init__(self, max_total_ads=None, check_limit_callback=None):
         """
         Inicializa o detector de anúncios.
 
         Args:
             max_total_ads (int, optional): Número máximo de anúncios individuais a processar.
+            check_limit_callback (callable, optional): Função de callback para verificar limite global
         """
         self.ad_segments = []
         self.last_segment = None
@@ -64,6 +66,7 @@ class AdDetector:
         self.current_pod_ad_count = 0
         self.total_ad_pods_viewed = 0
         self.max_total_ads = max_total_ads
+        self.check_limit_callback = check_limit_callback
 
     def process_playlist(self, playlist_content: str):
         """
@@ -158,8 +161,12 @@ class AdDetector:
             self.current_pod_info = None
             self.current_pod_ad_count = 0
             
-            # Verifica se atingiu o limite total de anúncios
-            if self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
+            # Verifica limite usando o callback se disponível
+            if self.check_limit_callback and self.check_limit_callback(pod_length):
+                self.print_limit_reached()
+                sys.exit(0)
+            # Verifica limite local se não houver callback
+            elif self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
                 self.print_limit_reached()
                 sys.exit(0)
 
@@ -202,5 +209,15 @@ class AdDetector:
         logger.info(message)
         sys.stdout.flush()
 
-def create_ad_detector(max_total_ads=None):
-    return AdDetector(max_total_ads=max_total_ads)
+def create_ad_detector(max_total_ads=None, check_limit_callback=None):
+    """
+    Cria uma nova instância do AdDetector.
+
+    Args:
+        max_total_ads (int, optional): Número máximo de anúncios a serem processados
+        check_limit_callback (callable, optional): Função de callback para verificar limite global
+
+    Returns:
+        AdDetector: Nova instância do detector de anúncios
+    """
+    return AdDetector(max_total_ads=max_total_ads, check_limit_callback=check_limit_callback)
