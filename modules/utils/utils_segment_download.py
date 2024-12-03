@@ -65,7 +65,7 @@ def simular_download_segmento(url, bot_id=None):
             'User-Agent': fingerprint.get('User-Agent')
         }
 
-        response = session.get(url, headers=headers, timeout=5)
+        response = session.head(url, headers=headers, timeout=5)
         if response.status_code == 200:
             print(f"{SUCCESS_COLOR}Segmento baixado: {url[:70]}...{RESET}")
             return True

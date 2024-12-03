@@ -11,6 +11,7 @@ Imports:
     utils_update_playlist: Atualização e gerenciamento de playlists M3U8.
     twitch_stream_checker: Verificação de status de streams da Twitch.
     utils_logger: Módulo para gerenciamento centralizado de logs.
+    utils_failure_manager: Módulo para gerenciamento de falhas e recuperação de erros.
 
 Exports:
     ProxyManager: Classe para gerenciamento de proxies.
@@ -22,6 +23,8 @@ Exports:
     verificar_canal_online: Verifica se um canal da Twitch está online.
     get_logger: Obtém um logger configurado com o nome especificado.
     logger_manager: Criar uma instância global do LoggerManager.
+    get_failure_manager: Retorna a instância global do gerenciador de falhas.
+    FailureManager: Classe para gerenciamento de falhas e recuperação de erros.
 """
 
 import sys
@@ -54,6 +57,7 @@ from modules.utils.utils_stream_checker import (
 )
 
 from modules.utils.utils_logger import get_logger, logger_manager
+from modules.utils.utils_failure_manager import get_failure_manager, FailureManager
 
 __all__ = [
     'ProxyManager',
@@ -64,7 +68,9 @@ __all__ = [
     'atualizar_playlist',
     'verificar_canal_online',
     'get_logger',
-    'logger_manager'
+    'logger_manager',
+    'get_failure_manager',
+    'FailureManager'
 ]
 
 # Testando importações

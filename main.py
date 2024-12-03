@@ -9,6 +9,7 @@ from colorama import Fore, Style, init
 from modules.utils.utils_logger import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
+from modules.utils.utils_failure_manager import get_failure_manager
 
 # Inicializa o Colorama
 init()
@@ -60,8 +61,30 @@ def check_anuncios_limit(ads_viewed):
     """Verifica se o limite global de anúncios foi atingido."""
     global total_anuncios_global, limite_anuncios_global
     with anuncios_lock:
+        antigo_total = total_anuncios_global
         total_anuncios_global += ads_viewed
+        logger.info(f"Anúncios: {antigo_total} -> {total_anuncios_global} (+{ads_viewed})")
+        
+        # Cria o diretório de logs se não existir
+        log_dir = os.path.join(os.path.dirname(__file__), 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        
+        # Nome do arquivo com timestamp
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        log_file = os.path.join(log_dir, f'progresso_anuncios_{timestamp}.txt')
+        
+        # Salva o progresso no arquivo
+        with open(log_file, 'a', encoding='utf-8') as f:
+            progresso = f"Progresso: {total_anuncios_global}/{limite_anuncios_global} anúncios"
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {progresso}\n")
+        
+        logger.info(f"Progresso: {total_anuncios_global}/{limite_anuncios_global} anúncios")
+        
         if total_anuncios_global >= limite_anuncios_global:
+            mensagem = f"Limite máximo de {limite_anuncios_global} anúncios atingido!"
+            logger.warning(mensagem)
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {mensagem}\n")
             should_stop.set()
             return True
     return False
@@ -73,58 +96,77 @@ def bot_worker(canal_nome: str, bot_id: int):
     sessao_tentativas = 0
     max_sessoes = 3
     sucesso = False
+    failure_mgr = get_failure_manager()
     
     while sessao_tentativas < max_sessoes and not sucesso and not should_stop.is_set():
-        if sessao_tentativas > 0:
-            logger.info(f"BOT {bot_id}: Iniciando nova sessão ({sessao_tentativas + 1} de {max_sessoes})")
-            session_manager.close_session(bot_id)
-            fingerprint = get_fingerprint()
-        else:
-            fingerprint = session_manager.get_fingerprint(bot_id)
-            if not fingerprint:
+        try:
+            if sessao_tentativas > 0 or failure_mgr.should_restart_session(bot_id):
+                logger.info(f"BOT {bot_id}: Iniciando nova sessão ({sessao_tentativas + 1} de {max_sessoes})")
+                session_manager.close_session(bot_id)
                 fingerprint = get_fingerprint()
-        
-        log_session_details(bot_id, fingerprint)
-        
-        tentativas_conexao = 0
-        max_tentativas_conexao = 3
-        
-        while tentativas_conexao < max_tentativas_conexao and not sucesso and not should_stop.is_set():
-            try:
-                if tentativas_conexao > 0:
-                    logger.info(f"BOT {bot_id}: Tentativa {tentativas_conexao + 1} de {max_tentativas_conexao}")
-                    time.sleep(5)
-                
-                token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
-                if token_data:
-                    logger.info(f"BOT {bot_id}: Token de acesso obtido com sucesso")
-                    
-                    playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-                    if playlist:
-                        logger.info(f"BOT {bot_id}: Playlist M3U8 obtida com sucesso")
-                        
-                        resultado = atualizar_playlist(canal_nome, token_data, bot_id, 
-                                                     limite_anuncios=None,  # Remove limite individual
-                                                     check_limit_callback=check_anuncios_limit)
-                        
-                        if resultado:
-                            sucesso = True
-                        else:
-                            raise Exception("Falha ao atualizar playlist")
-                    else:
-                        raise Exception("Falha ao obter playlist M3U8")
-                else:
-                    raise Exception("Falha ao obter token de acesso")
+                failure_mgr.reset_stats(bot_id)
+            else:
+                fingerprint = session_manager.get_fingerprint(bot_id)
+                if not fingerprint:
+                    fingerprint = get_fingerprint()
+            
+            # Obtém token
+            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+            if not token_data:
+                if failure_mgr.register_failure(bot_id, "Falha ao obter token de acesso"):
+                    continue
+                time.sleep(5)
+                continue
+            
+            # Log detalhado do token obtido
+            logger.info(f"""
+BOT {bot_id}: Token obtido com sucesso:
+- Signature: {token_data['signature'][:30]}...
+- Token Value: {token_data['value'][:30]}...
+""")
+            failure_mgr.register_success(bot_id)
+            
+            # Obtém playlist
+            playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
+            if not playlist:
+                if failure_mgr.register_failure(bot_id, "Falha ao obter playlist M3U8"):
+                    continue
+                time.sleep(5)
+                continue
+            
+            # Log detalhado da playlist obtida
+            playlist_lines = playlist.split('\n')
+            logger.info(f"""
+BOT {bot_id}: Playlist M3U8 obtida com sucesso:
+- Total de linhas: {len(playlist_lines)}
+- Primeiras linhas:
+{chr(10).join(['  ' + line for line in playlist_lines[:5]])}
+...
+""")
+            failure_mgr.register_success(bot_id)
+            
+            resultado = atualizar_playlist(canal_nome, token_data, bot_id, 
+                                         limite_anuncios=None,
+                                         check_limit_callback=check_anuncios_limit)
+            
+            if resultado:
+                sucesso = True
+                failure_mgr.register_success(bot_id)
+            else:
+                if failure_mgr.register_failure(bot_id, "Falha ao atualizar playlist"):
+                    continue
 
-            except Exception as e:
-                logger.error(f"BOT {bot_id} - Erro na tentativa {tentativas_conexao + 1}: {str(e)}")
-                tentativas_conexao += 1
+        except Exception as e:
+            if failure_mgr.register_failure(bot_id, str(e)):
+                continue
+            time.sleep(5)
         
         if not sucesso:
             sessao_tentativas += 1
 
     if not sucesso:
         logger.error(f"BOT {bot_id}: Falha após {max_sessoes} tentativas de sessão diferentes")
+        logger.error(f"BOT {bot_id}: Resumo de falhas:\n{failure_mgr.get_failure_summary(bot_id)}")
 
 def main():
     global limite_anuncios_global
