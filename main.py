@@ -94,12 +94,13 @@ def bot_worker(canal_nome: str, bot_id: int):
     logger.info(f"Iniciando BOT {bot_id} para o canal: {canal_nome}")
     
     sessao_tentativas = 0
-    max_sessoes = 3
+    max_sessoes = 3  # Número máximo de tentativas de nova sessão
     sucesso = False
     failure_mgr = get_failure_manager()
     
     while sessao_tentativas < max_sessoes and not sucesso and not should_stop.is_set():
         try:
+            # Verifica se deve reiniciar a sessão
             if sessao_tentativas > 0 or failure_mgr.should_restart_session(bot_id):
                 logger.info(f"BOT {bot_id}: Iniciando nova sessão ({sessao_tentativas + 1} de {max_sessoes})")
                 session_manager.close_session(bot_id)
@@ -110,12 +111,29 @@ def bot_worker(canal_nome: str, bot_id: int):
                 if not fingerprint:
                     fingerprint = get_fingerprint()
             
-            # Obtém token
-            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+            # Tentativas de obter token
+            token_tentativas = 0
+            max_token_tentativas = 3
+            token_data = None
+            
+            while token_tentativas < max_token_tentativas and not token_data:
+                token_tentativas += 1
+                logger.info(f"BOT {bot_id}: Tentativa {token_tentativas} de {max_token_tentativas} para obter token")
+                
+                token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+                if not token_data:
+                    if token_tentativas < max_token_tentativas:
+                        logger.warning(f"BOT {bot_id}: Falha ao obter token. Tentando novamente em 5 segundos...")
+                        time.sleep(5)
+                    else:
+                        if failure_mgr.register_failure(bot_id, "Falha ao obter token após 3 tentativas"):
+                            logger.error(f"BOT {bot_id}: Falha crítica ao obter token. Reiniciando sessão...")
+                            break
+                        time.sleep(5)
+                        continue
+            
             if not token_data:
-                if failure_mgr.register_failure(bot_id, "Falha ao obter token de acesso"):
-                    continue
-                time.sleep(5)
+                sessao_tentativas += 1
                 continue
             
             # Log detalhado do token obtido
