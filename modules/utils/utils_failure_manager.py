@@ -44,16 +44,7 @@ class FailureManager:
         return self.bot_stats[bot_id]
     
     def register_failure(self, bot_id: int, error_message: str) -> bool:
-        """
-        Registra uma falha para um bot específico.
-        
-        Args:
-            bot_id (int): ID do bot
-            error_message (str): Mensagem de erro associada à falha
-            
-        Returns:
-            bool: True se o limite de falhas foi atingido
-        """
+        """Registra uma falha e retorna True se atingiu o limite de falhas."""
         stats = self.get_stats(bot_id)
         stats.consecutive_failures += 1
         stats.total_failures += 1
@@ -77,7 +68,7 @@ class FailureManager:
         stats.last_success_time = datetime.now(timezone.utc)
     
     def should_restart_session(self, bot_id: int) -> bool:
-        """Verifica se a sessão deve ser reiniciada baseado nas falhas."""
+        """Verifica se deve reiniciar baseado no número de falhas consecutivas."""
         stats = self.get_stats(bot_id)
         return stats.consecutive_failures >= self.max_consecutive_failures
     

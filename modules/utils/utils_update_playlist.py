@@ -33,7 +33,7 @@ sys.path.append(root_dir)
 try:
     # Importações dos módulos core
     from modules.core.core_token import obter_playback_access_token
-    from modules.core.core_get_playlist import obter_playlist_m3u8
+    from modules.core.core_get_playlist import obter_playlist_m3u8, tentar_obter_playlist_com_retry
     
     # Importações dos módulos utils
     from modules.utils.utils_segment_download import iniciar_downloader
@@ -71,7 +71,7 @@ def extrair_links_qualidade(playlist: str) -> List[str]:
 
 def obter_link_aleatorio(links: List[str]) -> Optional[str]:
     """
-    Retorna um link aleatório da lista de links de qualidade.
+    Retorna um link aleat��rio da lista de links de qualidade.
 
     Args:
         links (List[str]): Lista de URLs das diferentes qualidades.
@@ -166,11 +166,28 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None, 
                                    check_limit_callback=check_limit_callback)
 
-    # Obter playlist inicial
-    playlist_m3u8 = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-    if not playlist_m3u8:
-        print(f"{ERROR_COLOR}Falha ao obter playlist inicial{RESET}")
-        return None
+    # Obter playlist inicial com retry
+    sessao_tentativas = 0
+    max_sessoes = 3
+    playlist_m3u8 = None
+    
+    while sessao_tentativas < max_sessoes and not playlist_m3u8:
+        playlist_m3u8, precisa_nova_sessao = tentar_obter_playlist_com_retry(canal_nome, token_data, bot_id)
+        
+        if not playlist_m3u8:
+            if precisa_nova_sessao:
+                sessao_tentativas += 1
+                if sessao_tentativas < max_sessoes:
+                    print(f"{WARNING_COLOR}Iniciando nova sessão ({sessao_tentativas}/{max_sessoes}){RESET}")
+                    session_manager.close_session(bot_id)
+                    # Obter novo token e fingerprint aqui se necessário
+                    continue
+                else:
+                    print(f"{ERROR_COLOR}Falha após {max_sessoes} tentativas de sessão{RESET}")
+                    return None
+            else:
+                print(f"{ERROR_COLOR}Falha ao obter playlist inicial{RESET}")
+                return None
 
     # Extrair link de qualidade
     links_qualidade = extrair_links_qualidade(playlist_m3u8)
