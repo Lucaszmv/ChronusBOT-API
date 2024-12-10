@@ -8,8 +8,10 @@ import logging
 import requests
 import time
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Set
 from colorama import Fore, Style, init
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # Inicializa o colorama
 init(autoreset=True)
@@ -39,6 +41,9 @@ class ProxyManager:
         self.max_response_time = max_response_time
         self.proxies: List[str] = []
         self.bot_proxies: Dict[int, str] = {}
+        self.available_proxies: Set[str] = set()
+        self.adjust_lock = threading.Lock()
+        self.total_bots = 0
         self.load_proxies()
 
     def test_proxy(self, proxy: str) -> bool:
@@ -83,7 +88,7 @@ class ProxyManager:
         return False
 
     def load_proxies(self) -> None:
-        """Carrega proxies e usa o primeiro que responder rapidamente."""
+        """Carrega e testa apenas a quantidade necessária de proxies."""
         try:
             if not os.path.exists(self.proxy_file):
                 logger.warning(f"Arquivo de proxies não encontrado: {self.proxy_file}")
@@ -91,58 +96,44 @@ class ProxyManager:
 
             with open(self.proxy_file, 'r') as f:
                 raw_proxies = [line.strip() for line in f if line.strip()]
+                random.shuffle(raw_proxies)  # Randomiza a lista
 
-            logger.info(f"{Fore.CYAN}Testando proxies até encontrar um rápido...{Style.RESET_ALL}")
+            # Usa total_bots ao invés de len(self.bot_proxies)
+            needed_proxies = self.total_bots if self.total_bots > 0 else 2
+            proxies_to_test = raw_proxies[:needed_proxies * 2]
             
-            # Define tempo máximo de resposta como 1 segundo
-            fast_response_time = 1.0
+            logger.info(f"{Fore.CYAN}Testando {len(proxies_to_test)} proxies para encontrar {needed_proxies} válidos...{Style.RESET_ALL}")
             
-            for proxy in raw_proxies:
-                # Testa o proxy atual
-                formatted_proxy = self.format_proxy(proxy)
-                if not formatted_proxy:
-                    continue
+            valid_proxies = []
+            max_workers = min(20, len(proxies_to_test))
 
-                proxies = {
-                    'http': formatted_proxy,
-                    'https': formatted_proxy
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_proxy = {
+                    executor.submit(self.test_proxy, proxy): proxy 
+                    for proxy in proxies_to_test
                 }
-
-                # Escolhe um site aleatório para teste
-                test_url = random.choice(TEST_URLS)
                 
-                try:
-                    start_time = time.time()
-                    response = requests.get(
-                        test_url,
-                        proxies=proxies,
-                        timeout=fast_response_time,
-                        verify=False
-                    )
-                    response_time = time.time() - start_time
-                    
-                    if response.status_code == 200 and response_time <= fast_response_time:
-                        # Encontrou um proxy rápido, adiciona e para o teste
-                        self.proxies = [proxy]
-                        logger.info(f"{Fore.GREEN}Proxy rápido encontrado: {proxy} - Tempo: {response_time:.2f}s{Style.RESET_ALL}")
-                        return
-                        
-                except Exception as e:
-                    logger.debug(f"{Fore.RED}Proxy descartado: {proxy} - Erro: {str(e)}{Style.RESET_ALL}")
-                    continue
+                for future in as_completed(future_to_proxy):
+                    proxy = future_to_proxy[future]
+                    try:
+                        is_valid = future.result()
+                        if is_valid:
+                            valid_proxies.append(proxy)
+                            logger.info(f"{Fore.GREEN}Proxy válido: {proxy}{Style.RESET_ALL}")
+                            
+                            # Se já temos proxies suficientes, cancela os testes restantes
+                            if len(valid_proxies) >= needed_proxies:
+                                for f in future_to_proxy:
+                                    f.cancel()
+                                break
+                    except Exception as e:
+                        logger.debug(f"Erro ao testar proxy {proxy}: {e}")
 
-            # Se nenhum proxy rápido foi encontrado, tenta novamente com tempo maior
-            logger.warning(f"{Fore.YELLOW}Nenhum proxy rápido encontrado, testando com tempo maior...{Style.RESET_ALL}")
+            with self.adjust_lock:
+                self.proxies = valid_proxies
+                self.available_proxies = set(valid_proxies)
             
-            for proxy in raw_proxies:
-                if self.test_proxy(proxy):  # Usa o tempo padrão definido na classe
-                    self.proxies = [proxy]
-                    break
-
-            if not self.proxies:
-                logger.error(f"{Fore.RED}Nenhum proxy válido encontrado!{Style.RESET_ALL}")
-            else:
-                logger.info(f"{Fore.GREEN}Proxy válido encontrado e configurado{Style.RESET_ALL}")
+            logger.info(f"{Fore.GREEN}Proxies válidos carregados: {len(valid_proxies)}{Style.RESET_ALL}")
 
         except Exception as e:
             logger.error(f"Erro ao carregar proxies: {e}")
@@ -161,18 +152,20 @@ class ProxyManager:
             return None
 
     def get_proxy(self, bot_id: int) -> Optional[str]:
-        """Obtém um proxy aleatório para um bot específico."""
+        """Obtém um proxy exclusivo para um bot."""
         if bot_id in self.bot_proxies:
             return self.format_proxy(self.bot_proxies[bot_id])
 
-        if not self.proxies:
-            return None
-
-        proxy = random.choice(self.proxies)
-        self.bot_proxies[bot_id] = proxy
-        formatted = self.format_proxy(proxy)
-        logger.info(f"Bot {bot_id} obteve proxy: {formatted}")
-        return formatted
+        with self.adjust_lock:
+            if not self.available_proxies:
+                logger.warning(f"Bot {bot_id}: Nenhum proxy disponível")
+                return None
+            
+            # Pega um proxy disponível e o remove da lista de disponíveis
+            proxy = self.available_proxies.pop()
+            self.bot_proxies[bot_id] = proxy
+            logger.info(f"Bot {bot_id} obteve proxy exclusivo: {proxy}")
+            return self.format_proxy(proxy)
 
     def register_proxy_failure(self, bot_id: int) -> None:
         """Remove um proxy que falhou da lista."""
@@ -183,11 +176,19 @@ class ProxyManager:
                 logger.warning(f"Proxy removido após falha do bot {bot_id}")
             self.release_proxy(bot_id)
 
-    def release_proxy(self, bot_id: int) -> None:
-        """Libera o proxy associado a um bot."""
-        if bot_id in self.bot_proxies:
-            del self.bot_proxies[bot_id]
-            logger.debug(f"Proxy liberado pelo bot {bot_id}")
+    def release_proxy(self, bot_id: int):
+        """Libera o proxy para uso por outros bots."""
+        with self.adjust_lock:
+            if bot_id in self.bot_proxies:
+                proxy = self.bot_proxies[bot_id]
+                del self.bot_proxies[bot_id]
+                self.available_proxies.add(proxy)  # Devolve para lista de disponíveis
+                logger.info(f"Bot {bot_id} liberou proxy: {proxy}")
+
+    def set_total_bots(self, num_bots: int):
+        """Define o número total de bots que precisarão de proxies."""
+        self.total_bots = num_bots
+        self.load_proxies()  # Carrega proxies baseado no número total de bots
 
 def create_proxy_manager(proxy_file: str = 'proxy.txt', max_response_time: float = 2.0) -> ProxyManager:
     """
