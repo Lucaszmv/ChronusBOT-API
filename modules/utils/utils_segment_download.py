@@ -12,6 +12,7 @@ from collections import deque
 from colorama import Fore, Style, init
 from datetime import datetime, timezone
 from typing import Optional
+from modules.utils.utils_rate_limiter import get_rate_limiter
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -40,9 +41,18 @@ WAIT_TIME = lambda: random.uniform(0.10, 0.20)
 # Conjunto para armazenar os segmentos já baixados
 segmentos_baixados = set()
 
+logger = logging.getLogger(__name__)
+
 def simular_download_segmento(url, bot_id=None):
     """Simula o download de um segmento de stream."""
+    rate_limiter = get_rate_limiter()
+    
     try:
+        if not rate_limiter.acquire(bot_id, 'segment'):
+            logger.warning(f"BOT {bot_id}: Limite de downloads atingido, aguardando...")
+            time.sleep(1)
+            return False
+            
         inicio = url.find('https://')
         if inicio == -1 or not url.endswith('.ts'):
             return False
@@ -76,6 +86,9 @@ def simular_download_segmento(url, bot_id=None):
     except Exception as e:
         print(f"{ERROR_COLOR}Erro ao baixar segmento: {str(e)}{RESET}")
         return False
+
+    finally:
+        rate_limiter.release(bot_id, 'segment')
 
 def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     """Processa a fila de download de segmentos."""

@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from collections import deque
 import json
+from modules.utils.utils_rate_limiter import get_rate_limiter
 
 # Inicializa o Colorama
 init()
@@ -71,7 +72,7 @@ def extrair_links_qualidade(playlist: str) -> List[str]:
 
 def obter_link_aleatorio(links: List[str]) -> Optional[str]:
     """
-    Retorna um link aleat��rio da lista de links de qualidade.
+    Retorna um link aleatório da lista de links de qualidade.
 
     Args:
         links (List[str]): Lista de URLs das diferentes qualidades.
@@ -203,8 +204,16 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     # Iniciar downloader em thread separada
     iniciar_downloader(fila_segmentos, bot_id)
 
+    rate_limiter = get_rate_limiter()
+    
     while True:
         try:
+            # Adquire permissão para atualizar playlist
+            if not rate_limiter.acquire(bot_id, 'playlist'):
+                logger.warning(f"BOT {bot_id}: Limite de atualizações atingido, aguardando...")
+                time.sleep(2)
+                continue
+                
             playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
             if not playlist_qualidade:
                 print(f"{WARNING_COLOR}Tentativa de atualizar playlist falhou{RESET}")
@@ -250,3 +259,6 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
         except Exception as e:
             print(f"{ERROR_COLOR}Erro ao atualizar playlist: {e}{RESET}")
             time.sleep(2)
+
+        finally:
+            rate_limiter.release(bot_id, 'playlist')
