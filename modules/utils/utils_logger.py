@@ -32,48 +32,44 @@ class LoggerManager:
             LoggerManager._initialized = True
 
     def setup_logging(self):
-        """Configura o sistema de logging com formatação colorida e arquivo."""
-        # Criar diretório de logs
+        """Configura o sistema de logging com formatação mais concisa."""
         log_dir = os.path.join(Path(__file__).parent.parent.parent, 'logs')
         os.makedirs(log_dir, exist_ok=True)
 
-        # Nome do arquivo de log com timestamp
         log_file = os.path.join(
             log_dir, 
             f'chronusbot_{datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")}.log'
         )
 
-        # Configuração básica para arquivo
-        logging.basicConfig(
-            filename=log_file,
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-
-        # Handler para console com cores
+        # Formato mais conciso para arquivo
+        file_formatter = logging.Formatter('%(asctime)s [%(levelname).1s] %(message).200s')
+        
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(file_formatter)
+        
+        # Handler para console com cores e formato conciso
         console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
         console.setFormatter(self.ColoredFormatter())
         
         # Configurar logger raiz
         root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(file_handler)
         root_logger.addHandler(console)
 
     class ColoredFormatter(logging.Formatter):
-        """Formatador personalizado para colorir as mensagens de log."""
         def format(self, record):
-            # Adicionar cores baseado no nível do log
+            # Limita tamanho da mensagem
+            record.msg = str(record.msg)[:200]
+            
             if record.levelno == logging.INFO:
                 record.msg = f"{INFO_COLOR}{record.msg}{RESET}"
             elif record.levelno == logging.WARNING:
                 record.msg = f"{WARNING_COLOR}{record.msg}{RESET}"
             elif record.levelno == logging.ERROR:
                 record.msg = f"{ERROR_COLOR}{record.msg}{RESET}"
-            elif record.levelno == logging.DEBUG:
-                record.msg = f"{SUCCESS_COLOR}{record.msg}{RESET}"
-                
-            return super().format(record)
+            
+            return f"[{record.levelname[0]}] {record.msg}"
 
 def get_logger(name: str) -> logging.Logger:
     """

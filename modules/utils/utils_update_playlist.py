@@ -116,7 +116,7 @@ def obter_playlist_qualidade(url: str, fingerprint: dict, bot_id: int = None) ->
         response.raise_for_status()
         return response.text
     except requests.exceptions.RequestException as e:
-        logging.error(f"Erro ao obter playlist de qualidade: {e}")
+        logging.error(f"BOT {bot_id}: Erro ao obter playlist de qualidade: {e}")
         return None
 
 def extrair_segmentos_ts(playlist: str) -> List[str]:
@@ -165,7 +165,8 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     
     # Criar detector de anúncios com limite e callback
     ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None, 
-                                   check_limit_callback=check_limit_callback)
+                                   check_limit_callback=check_limit_callback,
+                                   bot_id=bot_id)
 
     # Obter playlist inicial com retry
     sessao_tentativas = 0

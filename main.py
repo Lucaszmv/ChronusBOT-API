@@ -10,6 +10,9 @@ from modules.utils.utils_logger import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from modules.utils.utils_failure_manager import get_failure_manager
+from modules.utils.utils_bot_monitor import get_bot_monitor
+from modules.core.core_session import session_manager
+from modules.utils.utils_proxy_manager import ProxyManager
 
 # Inicializa o Colorama
 init()
@@ -91,100 +94,108 @@ def check_anuncios_limit(ads_viewed):
 
 def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
-    logger.info(f"Iniciando BOT {bot_id} para o canal: {canal_nome}")
-    
-    sessao_tentativas = 0
-    max_sessoes = 3  # Número máximo de tentativas de nova sessão
-    sucesso = False
+    monitor = get_bot_monitor()
     failure_mgr = get_failure_manager()
+    proxy_manager = ProxyManager()
     
-    while sessao_tentativas < max_sessoes and not sucesso and not should_stop.is_set():
+    def reiniciar_sessao(motivo: str):
+        """Função interna para reiniciar a sessão completamente"""
+        logger.warning(f"BOT {bot_id}: Reiniciando sessão - Motivo: {motivo}")
+        monitor.update_status(bot_id, "Reiniciando sessão", motivo)
+        
+        # Fecha sessão atual
+        session_manager.close_session(bot_id)
+        
+        # Libera proxy atual
+        proxy_manager.release_proxy(bot_id)
+        
+        # Obtém novo proxy
+        new_proxy = proxy_manager.get_proxy(bot_id)
+        if not new_proxy:
+            logger.error(f"BOT {bot_id}: Falha ao obter novo proxy")
+            return False
+            
+        # Gera novo fingerprint
+        fingerprint = get_fingerprint()
+        
+        # Cria nova sessão
+        session = session_manager.get_session(bot_id)
+        if not session:
+            logger.error(f"BOT {bot_id}: Falha ao criar nova sessão")
+            return False
+            
+        # Reseta contadores de erro
+        failure_mgr.reset_stats(bot_id)
+        return True
+
+    while not should_stop.is_set():
         try:
-            # Verifica se deve reiniciar a sessão
-            if sessao_tentativas > 0 or failure_mgr.should_restart_session(bot_id):
-                logger.info(f"BOT {bot_id}: Iniciando nova sessão ({sessao_tentativas + 1} de {max_sessoes})")
-                session_manager.close_session(bot_id)
-                fingerprint = get_fingerprint()
-                failure_mgr.reset_stats(bot_id)
-            else:
-                fingerprint = session_manager.get_fingerprint(bot_id)
-                if not fingerprint:
-                    fingerprint = get_fingerprint()
+            monitor.update_status(bot_id, "Iniciando")
             
-            # Tentativas de obter token
-            token_tentativas = 0
-            max_token_tentativas = 3
-            token_data = None
-            
-            while token_tentativas < max_token_tentativas and not token_data:
-                token_tentativas += 1
-                logger.info(f"BOT {bot_id}: Tentativa {token_tentativas} de {max_token_tentativas} para obter token")
-                
-                token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
-                if not token_data:
-                    if token_tentativas < max_token_tentativas:
-                        logger.warning(f"BOT {bot_id}: Falha ao obter token. Tentando novamente em 5 segundos...")
-                        time.sleep(5)
-                    else:
-                        if failure_mgr.register_failure(bot_id, "Falha ao obter token após 3 tentativas"):
-                            logger.error(f"BOT {bot_id}: Falha crítica ao obter token. Reiniciando sessão...")
-                            break
-                        time.sleep(5)
-                        continue
-            
-            if not token_data:
-                sessao_tentativas += 1
-                continue
-            
-            # Log detalhado do token obtido
-            logger.info(f"""
-BOT {bot_id}: Token obtido com sucesso:
-- Signature: {token_data['signature'][:30]}...
-- Token Value: {token_data['value'][:30]}...
-""")
-            failure_mgr.register_success(bot_id)
-            
-            # Obtém playlist
-            playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-            if not playlist:
-                if failure_mgr.register_failure(bot_id, "Falha ao obter playlist M3U8"):
-                    continue
+            # Primeira configuração da sessão
+            if not reiniciar_sessao("Iniciando bot"):
                 time.sleep(5)
                 continue
-            
-            # Log detalhado da playlist obtida
-            playlist_lines = playlist.split('\n')
-            logger.info(f"""
-BOT {bot_id}: Playlist M3U8 obtida com sucesso:
-- Total de linhas: {len(playlist_lines)}
-- Primeiras linhas:
-{chr(10).join(['  ' + line for line in playlist_lines[:5]])}
-...
-""")
-            failure_mgr.register_success(bot_id)
-            
-            resultado = atualizar_playlist(canal_nome, token_data, bot_id, 
-                                         limite_anuncios=None,
-                                         check_limit_callback=check_anuncios_limit)
-            
-            if resultado:
-                sucesso = True
-                failure_mgr.register_success(bot_id)
-            else:
-                if failure_mgr.register_failure(bot_id, "Falha ao atualizar playlist"):
-                    continue
-
-        except Exception as e:
-            if failure_mgr.register_failure(bot_id, str(e)):
+                
+            # Obtém token
+            fingerprint = session_manager.get_fingerprint(bot_id)
+            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+            if not token_data:
+                reiniciar_sessao("Falha ao obter token")
+                time.sleep(5)
                 continue
+                
+            # Loop principal de atualização
+            erros_consecutivos = 0
+            ultima_atualizacao = time.time()
+            
+            while not should_stop.is_set():
+                try:
+                    monitor.update_status(bot_id, "Atualizando playlist")
+                    
+                    # Se tiver muitos erros, reinicia
+                    if erros_consecutivos >= 3:
+                        reiniciar_sessao(f"{erros_consecutivos} erros consecutivos")
+                        break
+                    
+                    # Se passou muito tempo sem atualização, reinicia
+                    if time.time() - ultima_atualizacao > 30:
+                        reiniciar_sessao("Timeout de atualização")
+                        break
+                    
+                    # Obtém e processa playlist
+                    playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
+                    if not playlist:
+                        erros_consecutivos += 1
+                        time.sleep(2)
+                        continue
+                        
+                    resultado = atualizar_playlist(canal_nome, token_data, bot_id,
+                                                 limite_anuncios=None,
+                                                 check_limit_callback=check_anuncios_limit)
+                    
+                    if not resultado:
+                        erros_consecutivos += 1
+                        time.sleep(2)
+                        continue
+                    
+                    # Sucesso - reseta contadores
+                    erros_consecutivos = 0
+                    ultima_atualizacao = time.time()
+                    failure_mgr.register_success(bot_id)
+                    
+                    monitor.update_status(bot_id, "Ativo",
+                                        f"Última atualização: {datetime.now().strftime('%H:%M:%S')}")
+                    
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
+                    erros_consecutivos += 1
+                    
+        except Exception as e:
+            logger.error(f"BOT {bot_id}: Erro crítico: {str(e)}")
             time.sleep(5)
-        
-        if not sucesso:
-            sessao_tentativas += 1
-
-    if not sucesso:
-        logger.error(f"BOT {bot_id}: Falha após {max_sessoes} tentativas de sessão diferentes")
-        logger.error(f"BOT {bot_id}: Resumo de falhas:\n{failure_mgr.get_failure_summary(bot_id)}")
 
 def main():
     global limite_anuncios_global

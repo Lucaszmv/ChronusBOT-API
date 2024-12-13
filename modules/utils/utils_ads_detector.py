@@ -47,13 +47,14 @@ class AdDetector:
         check_limit_callback (callable, optional): Função de callback para verificar limite global
     """
 
-    def __init__(self, max_total_ads=None, check_limit_callback=None):
+    def __init__(self, max_total_ads=None, check_limit_callback=None, bot_id=None):
         """
         Inicializa o detector de anúncios.
 
         Args:
             max_total_ads (int, optional): Número máximo de anúncios individuais a processar.
             check_limit_callback (callable, optional): Função de callback para verificar limite global
+            bot_id (int, optional): ID do bot para logging
         """
         self.ad_segments = []
         self.last_segment = None
@@ -67,6 +68,7 @@ class AdDetector:
         self.total_ad_pods_viewed = 0
         self.max_total_ads = max_total_ads
         self.check_limit_callback = check_limit_callback
+        self.bot_id = bot_id
 
     def process_playlist(self, playlist_content: str):
         """
@@ -163,10 +165,14 @@ class AdDetector:
             
             # Verifica limite usando o callback se disponível
             if self.check_limit_callback and self.check_limit_callback(pod_length):
+                logger.info(f"BOT {self.bot_id}: Anúncios: {self.total_ads_viewed - pod_length} -> {self.total_ads_viewed} (+{pod_length})")
+                logger.info(f"BOT {self.bot_id}: Progresso: {self.total_ads_viewed}/{self.max_total_ads} anúncios")
                 self.print_limit_reached()
                 sys.exit(0)
             # Verifica limite local se não houver callback
             elif self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
+                logger.info(f"BOT {self.bot_id}: Anúncios: {self.total_ads_viewed - pod_length} -> {self.total_ads_viewed} (+{pod_length})")
+                logger.info(f"BOT {self.bot_id}: Progresso: {self.total_ads_viewed}/{self.max_total_ads} anúncios")
                 self.print_limit_reached()
                 sys.exit(0)
 
@@ -188,18 +194,19 @@ class AdDetector:
         logger.info(f"Novo pod de anúncios detectado: Início: {start_date}, {pod_length} anúncios {roll_type} - Formato: {ad_format}")
 
     def print_ad_viewed_success(self, last_segment: str):
-        message = f"Pod de anúncios visualizado com sucesso! Último segmento: {last_segment}"
+        """Exibe mensagem de sucesso quando um pod de anúncios é visualizado."""
+        message = f"BOT {self.bot_id}: Pod de anúncios visualizado com sucesso! Último segmento: {last_segment}"
         print(Fore.GREEN + message + Style.RESET_ALL)
         logger.info(message)
 
-        total_pods_message = f"Total de pods de anúncios visualizados: {self.total_ad_pods_viewed}"
+        total_pods_message = f"BOT {self.bot_id}: Total de pods de anúncios visualizados: {self.total_ad_pods_viewed}"
         print(Fore.CYAN + total_pods_message + Style.RESET_ALL)
         logger.info(total_pods_message)
 
         # Adiciona mensagem mais destacada para o total de anúncios
-        total_ads_message = f"\n{Fore.YELLOW}>>> Anúncios assistidos no total: {self.total_ads_viewed} <<<{Style.RESET_ALL}\n"
-        print(total_ads_message)
-        logger.info(f"Anúncios assistidos no total: {self.total_ads_viewed}")
+        total_ads_message = f"\nBOT {self.bot_id}: >>> Anúncios assistidos no total: {self.total_ads_viewed} <<<"
+        print(Fore.YELLOW + total_ads_message + Style.RESET_ALL)
+        logger.info(f"BOT {self.bot_id}: Anúncios assistidos no total: {self.total_ads_viewed}")
 
         sys.stdout.flush()
 
@@ -209,15 +216,16 @@ class AdDetector:
         logger.info(message)
         sys.stdout.flush()
 
-def create_ad_detector(max_total_ads=None, check_limit_callback=None):
+def create_ad_detector(max_total_ads=None, check_limit_callback=None, bot_id=None):
     """
     Cria uma nova instância do AdDetector.
 
     Args:
         max_total_ads (int, optional): Número máximo de anúncios a serem processados
         check_limit_callback (callable, optional): Função de callback para verificar limite global
+        bot_id (int, optional): ID do bot para logging
 
     Returns:
         AdDetector: Nova instância do detector de anúncios
     """
-    return AdDetector(max_total_ads=max_total_ads, check_limit_callback=check_limit_callback)
+    return AdDetector(max_total_ads=max_total_ads, check_limit_callback=check_limit_callback, bot_id=bot_id)

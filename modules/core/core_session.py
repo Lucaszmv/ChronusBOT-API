@@ -27,6 +27,7 @@ class SessionManager:
         self.sessions: Dict[int, requests.Session] = {}
         self.fingerprints: Dict[int, Dict[str, str]] = {}
         self.proxy_manager = None  # Será inicializado sob demanda
+        self.bot_proxies: Dict[int, str] = {}
         
     def get_session(self, bot_id: int) -> requests.Session:
         """
@@ -52,6 +53,8 @@ class SessionManager:
             
             # Obtém proxy do gerenciador
             proxy = self.proxy_manager.get_proxy(bot_id)
+            if proxy:
+                self.bot_proxies[bot_id] = proxy
                 
             self.sessions[bot_id] = self.create_session(proxy)
             logging.info(f"Nova sessão criada para bot {bot_id}")
@@ -100,6 +103,8 @@ class SessionManager:
             self.sessions[bot_id].close()
             del self.sessions[bot_id]
             del self.fingerprints[bot_id]
+            if bot_id in self.bot_proxies:
+                del self.bot_proxies[bot_id]
             self.proxy_manager.release_proxy(bot_id)
             logging.info(f"Sessão do bot {bot_id} fechada")
     
@@ -110,6 +115,20 @@ class SessionManager:
         for bot_id in list(self.sessions.keys()):
             self.close_session(bot_id)
         logging.info("Todas as sessões foram fechadas")
+    
+    def get_proxy_info(self, bot_id: int) -> str:
+        """
+        Retorna informação do proxy atual do bot.
+        
+        Args:
+            bot_id (int): ID do bot
+            
+        Returns:
+            str: Informação do proxy ou 'Sem proxy' se não houver
+        """
+        if bot_id in self.bot_proxies:
+            return self.bot_proxies[bot_id]
+        return "Sem proxy"
 
 # Instância global do gerenciador de sessões
 session_manager = SessionManager()
