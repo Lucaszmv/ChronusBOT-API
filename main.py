@@ -72,7 +72,7 @@ def check_anuncios_limit(ads_viewed):
         total_anuncios_global += ads_viewed
         logger.info(f"Anúncios: {antigo_total} -> {total_anuncios_global} (+{ads_viewed})")
         
-        # Cria o diretório de logs se não existir
+        # Cria o diretório de logs se n��o existir
         log_dir = os.path.join(os.path.dirname(__file__), 'logs')
         os.makedirs(log_dir, exist_ok=True)
         
@@ -150,35 +150,18 @@ def bot_worker(canal_nome: str, bot_id: int):
                 continue
                 
             # Loop principal de atualização
-            erros_consecutivos = 0
-            ultima_atualizacao = time.time()
-            
             while not should_stop.is_set():
                 try:
                     monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
                     
-                    # Se tiver muitos erros, reinicia
-                    if erros_consecutivos >= 3:
-                        reiniciar_sessao(f"{erros_consecutivos} erros consecutivos")
-                        break
-                    
-                    # Se passou muito tempo sem atualização, reinicia
-                    if time.time() - ultima_atualizacao > 30:
-                        reiniciar_sessao("Timeout de atualização")
-                        break
-                    
-                    # Obtém e processa playlist
-                    playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-                    if not playlist:
-                        erros_consecutivos += 1
-                        time.sleep(2)
-                        continue
-                        
                     resultado = atualizar_playlist(canal_nome, token_data, bot_id,
                                                  limite_anuncios=None,
                                                  check_limit_callback=check_anuncios_limit)
                     
-                    if not resultado:
+                    if resultado is False:  # Se retornou False, precisa reiniciar sessão
+                        reiniciar_sessao("Fila de segmentos vazia por muito tempo")
+                        break
+                    elif resultado is None:  # Se retornou None, teve erro
                         erros_consecutivos += 1
                         time.sleep(2)
                         continue

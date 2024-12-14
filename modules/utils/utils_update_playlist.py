@@ -150,13 +150,6 @@ def exibir_playlist_atualizada(playlist: str, max_linhas: int = 10) -> None:
 def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, limite_anuncios: int = None, check_limit_callback=None):
     """
     Atualiza continuamente a playlist e adiciona novos segmentos à fila.
-    
-    Args:
-        canal_nome (str): Nome do canal da Twitch
-        token_data (dict): Dados do token de acesso
-        bot_id (int, optional): ID do bot
-        limite_anuncios (int, optional): Número total de anúncios a serem assistidos
-        check_limit_callback (callable, optional): Callback para verificar limite global
     """
     fingerprint = session_manager.get_fingerprint(bot_id)
     segmentos_conhecidos = set()
@@ -168,6 +161,10 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                                    check_limit_callback=check_limit_callback,
                                    bot_id=bot_id)
 
+    # Contador para fila vazia
+    fila_vazia_inicio = None
+    TEMPO_MAXIMO_FILA_VAZIA = 30
+    
     # Obter playlist inicial com retry
     sessao_tentativas = 0
     max_sessoes = 3
@@ -182,7 +179,6 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                 if sessao_tentativas < max_sessoes:
                     print(f"{WARNING_COLOR}Iniciando nova sessão ({sessao_tentativas}/{max_sessoes}){RESET}")
                     session_manager.close_session(bot_id)
-                    # Obter novo token e fingerprint aqui se necessário
                     continue
                 else:
                     print(f"{ERROR_COLOR}Falha após {max_sessoes} tentativas de sessão{RESET}")
@@ -209,6 +205,16 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     
     while True:
         try:
+            # Verifica se a fila está vazia
+            if len(fila_segmentos) == 0:
+                if fila_vazia_inicio is None:
+                    fila_vazia_inicio = time.time()
+                elif time.time() - fila_vazia_inicio > TEMPO_MAXIMO_FILA_VAZIA:
+                    logger.warning(f"BOT {bot_id}: Fila vazia por mais de {TEMPO_MAXIMO_FILA_VAZIA}s. Reiniciando sessão...")
+                    return False  # Retorna False para indicar que precisa reiniciar
+            else:
+                fila_vazia_inicio = None
+
             # Adquire permissão para atualizar playlist
             if not rate_limiter.acquire(bot_id, 'playlist'):
                 logger.warning(f"BOT {bot_id}: Limite de atualizações atingido, aguardando...")
