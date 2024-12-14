@@ -43,7 +43,12 @@ class ProxyManager:
             with open(self.proxy_file, 'r') as f:
                 self.proxies = [line.strip() for line in f if line.strip()]
                 
-            logger.info(f"Carregados {len(self.proxies)} proxies do arquivo")
+            logger.info("", extra={
+                'proxy_load': {
+                    'total_proxies': len(self.proxies),
+                    'proxy_file': self.proxy_file
+                }
+            })
 
         except Exception as e:
             logger.error(f"Erro ao carregar proxies: {e}")
@@ -94,28 +99,18 @@ class ProxyManager:
     def get_proxy(self, bot_id: int) -> Optional[str]:
         """
         Obtém um proxy único para um bot.
-        
-        Args:
-            bot_id (int): ID do bot
-            
-        Returns:
-            Optional[str]: Proxy formatado ou None se não encontrar
         """
         with self.lock:
-            # Se o bot já tem um proxy, retorna ele
             if bot_id in self.bot_proxies:
                 return self.format_proxy(self.bot_proxies[bot_id])
 
-            # Lista de proxies disponíveis (não usados)
             available_proxies = [p for p in self.proxies if p not in self.used_proxies]
             
-            # Se não há proxies disponíveis, limpa a lista de usados e tenta novamente
             if not available_proxies:
                 logger.warning("Resetando lista de proxies usados")
                 self.used_proxies.clear()
                 available_proxies = self.proxies
 
-            # Tenta até 5 proxies aleatórios
             for _ in range(5):
                 if not available_proxies:
                     break
@@ -126,7 +121,13 @@ class ProxyManager:
                 if self.test_proxy(proxy):
                     self.bot_proxies[bot_id] = proxy
                     self.used_proxies.add(proxy)
-                    logger.info(f"Bot {bot_id} usando proxy: {proxy}")
+                    logger.info("", extra={
+                        'proxy_allocation': {
+                            'bot_id': bot_id,
+                            'proxy': proxy,
+                            'pool_size': len(self.proxies) - len(self.used_proxies)
+                        }
+                    })
                     return self.format_proxy(proxy)
 
             logger.error(f"Não foi possível encontrar proxy válido para bot {bot_id}")

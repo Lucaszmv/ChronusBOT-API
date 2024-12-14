@@ -140,59 +140,30 @@ class ProxyFormatter(logging.Formatter):
     
     def __init__(self):
         super().__init__()
-        self.last_test_id = 0
-        self.current_test = {}
     
     def format(self, record):
-        if hasattr(record, 'proxy_details'):
-            details = record.proxy_details
-            
-            # Se é um novo teste
-            if not self.current_test or self.current_test.get('needed') != details.get('needed'):
-                self.last_test_id += 1
-                self.current_test = {
-                    'id': self.last_test_id,
-                    'total': details.get('total'),
-                    'needed': details.get('needed'),
-                    'valid_proxies': [],
-                    'start_time': time.time()
-                }
-                record.msg = (
-                    f"\n{'='*80}\n"
-                    f"TESTE DE PROXIES #{self.current_test['id']}\n"
-                    f"{'='*80}\n"
-                    f"Objetivo: {self.current_test['needed']} proxies válidos de {self.current_test['total']} disponíveis\n"
-                )
-            else:
-                # Atualiza lista de proxies válidos
-                new_proxies = details.get('valid_proxies', [])
-                if new_proxies:
-                    for proxy in new_proxies:
-                        if proxy not in self.current_test['valid_proxies']:
-                            self.current_test['valid_proxies'].append(proxy)
-                            record.msg = f"✓ {proxy['address']} - {proxy['time']:.2f}s"
-                
-                # Se é o último log do teste (tem total_time)
-                if details.get('total_time'):
-                    record.msg = (
-                        f"\nRESUMO FINAL:\n"
-                        f"Proxies válidos encontrados: {len(self.current_test['valid_proxies'])}\n"
-                        f"Tempo total de teste......: {details['total_time']:.2f}s\n"
-                        f"{'='*80}\n"
-                    )
-                    self.current_test = {}  # Limpa teste atual
-            
+        if hasattr(record, 'proxy_load'):
+            details = record.proxy_load
+            return (
+                f"\n{'='*82}\n"
+                f"SISTEMA DE PROXY INICIADO\n"
+                f"{'='*82}\n"
+                f"Total de Proxies Carregados: {details.get('total_proxies')}\n"
+                f"Arquivo: {details.get('proxy_file')}\n"
+                f"{'='*82}\n"
+            )
         elif hasattr(record, 'proxy_allocation'):
             details = record.proxy_allocation
-            record.msg = (
-                f"\n{'='*80}\n"
-                f"PROXY ALOCADO\n"
-                f"Bot {details.get('bot_id'):02d} ➜ {details.get('proxy')}\n"
-                f"Pool atual: {details.get('pool_size')} proxies disponíveis\n"
-                f"{'='*80}\n"
+            return (
+                f"{'='*82}\n"
+                f"{datetime.now().strftime('%H:%M:%S')} | "
+                f"INFO    | BOT {details.get('bot_id')} usando proxy: {details.get('proxy')}\n"
+                f"Proxies Disponíveis: {details.get('pool_size')}\n"
+                f"{'='*82}"
             )
-        
-        return record.msg.strip() or ""
+        elif record.msg:
+            return record.msg
+        return ""
 
 class LoggerManager:
     """Gerenciador centralizado de logs do sistema."""
