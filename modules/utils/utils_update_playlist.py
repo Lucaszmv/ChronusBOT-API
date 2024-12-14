@@ -161,10 +161,36 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                                    check_limit_callback=check_limit_callback,
                                    bot_id=bot_id)
 
-    # Contador para fila vazia
+    # Contador para fila vazia e tentativas
     fila_vazia_inicio = None
     TEMPO_MAXIMO_FILA_VAZIA = 30
+    tentativas_recuperacao = 0
+    MAX_TENTATIVAS_RECUPERACAO = 3
     
+    # Função interna para tentar recuperar a playlist
+    def tentar_recuperar_playlist():
+        nonlocal token_data, link_qualidade
+        logger.warning(f"BOT {bot_id}: Tentativa {tentativas_recuperacao + 1}/{MAX_TENTATIVAS_RECUPERACAO} de recuperar playlist")
+        
+        # Tenta obter novo token
+        novo_token = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+        if not novo_token:
+            return False
+        token_data = novo_token
+        
+        # Tenta obter nova playlist master
+        nova_playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
+        if not nova_playlist:
+            return False
+            
+        # Extrai e seleciona nova qualidade
+        novos_links = extrair_links_qualidade(nova_playlist)
+        if not novos_links:
+            return False
+        link_qualidade = obter_link_aleatorio(novos_links)
+        
+        return True
+
     # Obter playlist inicial com retry
     sessao_tentativas = 0
     max_sessoes = 3
@@ -210,10 +236,25 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                 if fila_vazia_inicio is None:
                     fila_vazia_inicio = time.time()
                 elif time.time() - fila_vazia_inicio > TEMPO_MAXIMO_FILA_VAZIA:
-                    logger.warning(f"BOT {bot_id}: Fila vazia por mais de {TEMPO_MAXIMO_FILA_VAZIA}s. Reiniciando sessão...")
-                    return False  # Retorna False para indicar que precisa reiniciar
+                    # Sistema de retry antes de trocar sessão
+                    if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:
+                        tentativas_recuperacao += 1
+                        if tentar_recuperar_playlist():
+                            logger.info(f"BOT {bot_id}: Recuperação bem sucedida na tentativa {tentativas_recuperacao}")
+                            fila_vazia_inicio = None  # Reseta contador
+                            tentativas_recuperacao = 0  # Reseta tentativas
+                            continue
+                        else:
+                            logger.warning(f"BOT {bot_id}: Falha na tentativa {tentativas_recuperacao} de recuperação")
+                            time.sleep(2)  # Pequeno delay entre tentativas
+                            continue
+                    
+                    # Se todas as tentativas falharam, solicita troca de sessão
+                    logger.warning(f"BOT {bot_id}: Todas as {MAX_TENTATIVAS_RECUPERACAO} tentativas de recuperação falharam")
+                    return False
             else:
                 fila_vazia_inicio = None
+                tentativas_recuperacao = 0  # Reseta contador de tentativas quando a fila tem itens
 
             # Adquire permissão para atualizar playlist
             if not rate_limiter.acquire(bot_id, 'playlist'):
