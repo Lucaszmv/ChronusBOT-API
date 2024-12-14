@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict
 from colorama import Fore, Style, init
 from modules.utils.utils_logger import get_logger
+from modules.utils.utils_proxy_manager import ProxyManager
 
 logger = get_logger(__name__)
 
@@ -29,7 +30,7 @@ class SessionManager:
     def __init__(self):
         self.sessions: Dict[int, requests.Session] = {}
         self.fingerprints: Dict[int, Dict[str, str]] = {}
-        self.proxy_manager = None  # Será inicializado sob demanda
+        self.proxy_manager = ProxyManager()  # Inicializa uma única vez
         self.bot_proxies: Dict[int, str] = {}
         
     def get_session(self, bot_id: int) -> requests.Session:
@@ -45,11 +46,6 @@ class SessionManager:
         if bot_id not in self.sessions:
             # Importações sob demanda para evitar circular import
             from modules.core.core_fingerprint import get_fingerprint
-            from modules.utils.utils_proxy_manager import create_proxy_manager
-            
-            # Inicializa proxy_manager se necessário
-            if self.proxy_manager is None:
-                self.proxy_manager = create_proxy_manager()
             
             # Gerar novo fingerprint para o bot
             self.fingerprints[bot_id] = get_fingerprint()
@@ -117,9 +113,13 @@ class SessionManager:
             self.sessions[bot_id].close()
             del self.sessions[bot_id]
             del self.fingerprints[bot_id]
+            
+            # Libera o proxy através do ProxyManager
+            self.proxy_manager.release_proxy(bot_id)
+            
             if bot_id in self.bot_proxies:
                 del self.bot_proxies[bot_id]
-            self.proxy_manager.release_proxy(bot_id)
+                
             logging.info(f"Sessão do bot {bot_id} fechada")
     
     def close_all(self):

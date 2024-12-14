@@ -100,7 +100,6 @@ def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
     monitor = get_bot_monitor()
     failure_mgr = get_failure_manager()
-    proxy_manager = ProxyManager()
     
     def reiniciar_sessao(motivo: str):
         """Função interna para reiniciar a sessão completamente"""
@@ -110,19 +109,10 @@ def bot_worker(canal_nome: str, bot_id: int):
         # Fecha sessão atual
         session_manager.close_session(bot_id)
         
-        # Libera proxy atual
-        proxy_manager.release_proxy(bot_id)
-        
-        # Obtém novo proxy
-        new_proxy = proxy_manager.get_proxy(bot_id)
-        if not new_proxy:
-            logger.error(f"BOT {bot_id}: Falha ao obter novo proxy")
-            return False
-            
         # Gera novo fingerprint
         fingerprint = get_fingerprint()
         
-        # Cria nova sessão
+        # Cria nova sessão (que já vai obter novo proxy)
         session = session_manager.get_session(bot_id)
         if not session:
             logger.error(f"BOT {bot_id}: Falha ao criar nova sessão")
@@ -159,7 +149,7 @@ def bot_worker(canal_nome: str, bot_id: int):
                                                  check_limit_callback=check_anuncios_limit)
                     
                     if resultado is False:  # Se retornou False, precisa reiniciar sessão
-                        reiniciar_sessao("Fila de segmentos vazia por muito tempo")
+                        reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
                         break
                     elif resultado is None:  # Se retornou None, teve erro
                         erros_consecutivos += 1

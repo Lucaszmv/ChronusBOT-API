@@ -14,20 +14,24 @@ import threading
 logger = logging.getLogger(__name__)
 
 class ProxyManager:
+    _instance = None
+    
+    def __new__(cls, proxy_file: str = 'proxy.txt'):
+        if cls._instance is None:
+            cls._instance = super(ProxyManager, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
     def __init__(self, proxy_file: str = 'proxy.txt'):
-        """
-        Inicializa o gerenciador de proxies.
-        
-        Args:
-            proxy_file (str): Nome do arquivo contendo a lista de proxies
-        """
-        root_dir = str(Path(__file__).parent.parent.parent)
-        self.proxy_file = os.path.join(root_dir, proxy_file)
-        self.proxies: List[str] = []
-        self.bot_proxies: Dict[int, str] = {}
-        self.used_proxies: Set[str] = set()
-        self.lock = threading.Lock()
-        self.load_proxies()
+        if not self._initialized:
+            root_dir = str(Path(__file__).parent.parent.parent)
+            self.proxy_file = os.path.join(root_dir, proxy_file)
+            self.proxies: List[str] = []
+            self.bot_proxies: Dict[int, str] = {}
+            self.used_proxies: Set[str] = set()
+            self.lock = threading.Lock()
+            self.load_proxies()
+            self._initialized = True
 
     def load_proxies(self) -> None:
         """Carrega a lista de proxies do arquivo."""
