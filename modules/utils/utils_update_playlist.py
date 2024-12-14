@@ -189,6 +189,18 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
             return False
         link_qualidade = obter_link_aleatorio(novos_links)
         
+        # Verifica se a nova playlist tem segmentos
+        playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
+        if not playlist_qualidade:
+            return False
+            
+        # Verifica se tem segmentos
+        novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
+        if not novos_segmentos:
+            return False
+            
+        # Se chegou aqui, realmente recuperou com sucesso
+        logger.info(f"BOT {bot_id}: Recuperação bem sucedida na tentativa {tentativas_recuperacao} - {len(novos_segmentos)} segmentos encontrados")
         return True
 
     # Obter playlist inicial com retry
