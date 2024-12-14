@@ -10,6 +10,9 @@ import requests
 from pathlib import Path
 from typing import Dict
 from colorama import Fore, Style, init
+from modules.utils.utils_logger import get_logger
+
+logger = get_logger(__name__)
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -57,6 +60,17 @@ class SessionManager:
                 self.bot_proxies[bot_id] = proxy
                 
             self.sessions[bot_id] = self.create_session(proxy)
+            
+            # Log detalhado da sessão
+            logger.info("", extra={
+                'session_details': {
+                    'fingerprint': self.fingerprints[bot_id],
+                    'proxy': proxy,
+                    'user_agent': self.fingerprints[bot_id].get('User-Agent'),
+                    'client_id': self.fingerprints[bot_id].get('Client-Id')
+                }
+            })
+            
             logging.info(f"Nova sessão criada para bot {bot_id}")
         return self.sessions[bot_id]
     

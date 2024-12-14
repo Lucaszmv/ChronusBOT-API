@@ -10,7 +10,7 @@ from modules.utils.utils_logger import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from modules.utils.utils_failure_manager import get_failure_manager
-from modules.utils.utils_bot_monitor import get_bot_monitor
+from modules.utils.utils_bot_monitor import get_bot_monitor, BotStatus
 from modules.core.core_session import session_manager
 from modules.utils.utils_proxy_manager import ProxyManager
 
@@ -39,26 +39,30 @@ def print_header():
     print(f"{INFO_COLOR}ChronusBOT-API - Twitch Stream Downloader{RESET}")
     print(f"{INFO_COLOR}{'='*60}{RESET}\n")
 
-def log_session_details(bot_id, fingerprint):
-    """Loga os detalhes da sessão atual."""
-    logger.info(f"=== DETALHES DA SESSÃO DO BOT {bot_id} ===")
-    logger.info(f"Bot ID: {bot_id}")
-    logger.info("Fingerprint:")
-    for key, value in fingerprint.items():
-        logger.info(f"  {key}: {value}")
-    logger.info("========================")
+def log_session_details(bot_id, session):
+    """Loga detalhes completos da sessão."""
+    logger.info("", extra={
+        'session_details': {
+            'fingerprint': session.fingerprint,
+            'proxy': session.proxy,
+            'user_agent': session.headers.get('User-Agent'),
+            'client_id': session.headers.get('Client-ID')
+        }
+    })
 
-def log_request_details(action, headers, params=None):
-    """Loga os detalhes de uma requisição."""
-    logger.info(f"=== DETALHES DA REQUISIÇÃO: {action} ===")
-    logger.info("Headers:")
-    for key, value in headers.items():
-        logger.info(f"  {key}: {value}")
-    if params:
-        logger.info("Parâmetros:")
-        for key, value in params.items():
-            logger.info(f"  {key}: {value}")
-    logger.info("========================")
+def log_request_details(method, url, headers_sent, response):
+    """Loga detalhes completos da requisição e resposta."""
+    logger.info("", extra={
+        'request_details': {
+            'method': method,
+            'url': url,
+            'headers_sent': headers_sent,
+            'headers_received': dict(response.headers),
+            'status_code': response.status_code,
+            'reason': response.reason,
+            'response': response.text
+        }
+    })
 
 def check_anuncios_limit(ads_viewed):
     """Verifica se o limite global de anúncios foi atingido."""
@@ -130,7 +134,7 @@ def bot_worker(canal_nome: str, bot_id: int):
 
     while not should_stop.is_set():
         try:
-            monitor.update_status(bot_id, "Iniciando")
+            monitor.update_status(bot_id, BotStatus.INICIANDO)
             
             # Primeira configuração da sessão
             if not reiniciar_sessao("Iniciando bot"):
@@ -151,7 +155,7 @@ def bot_worker(canal_nome: str, bot_id: int):
             
             while not should_stop.is_set():
                 try:
-                    monitor.update_status(bot_id, "Atualizando playlist")
+                    monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
                     
                     # Se tiver muitos erros, reinicia
                     if erros_consecutivos >= 3:
@@ -183,9 +187,6 @@ def bot_worker(canal_nome: str, bot_id: int):
                     erros_consecutivos = 0
                     ultima_atualizacao = time.time()
                     failure_mgr.register_success(bot_id)
-                    
-                    monitor.update_status(bot_id, "Ativo",
-                                        f"Última atualização: {datetime.now().strftime('%H:%M:%S')}")
                     
                     time.sleep(1)
                     

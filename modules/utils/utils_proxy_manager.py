@@ -75,11 +75,11 @@ class ProxyManager:
             response_time = time.time() - start_time
             
             if response.status_code == 200 and response_time <= self.max_response_time:
-                logger.info(f"{Fore.GREEN}Proxy válido: {proxy} - Tempo: {response_time:.2f}s{Style.RESET_ALL}")
+                logger.info(f"Proxy válido: {proxy} - Tempo: {response_time:.2f}s")
                 return True
                 
         except Exception as e:
-            logger.debug(f"{Fore.RED}Proxy inválido: {proxy} - Erro: {str(e)}{Style.RESET_ALL}")
+            logger.debug(f"Proxy inválido: {proxy} - Erro: {str(e)}")
         
         return False
 
@@ -101,10 +101,7 @@ class ProxyManager:
                               and p not in self.bot_proxies.values()]
             
             if not proxies_to_test:
-                logger.warning("Todos os proxies já foram testados, tentando retestar todos")
-                # Se não há novos proxies, testa todos exceto os em uso
                 proxies_to_test = [p for p in all_proxies if p not in self.bot_proxies.values()]
-                # Limpa proxies anteriormente testados
                 self.available_proxies.clear()
                 self.proxies.clear()
             
@@ -113,12 +110,19 @@ class ProxyManager:
             
             # Calcula quantos proxies ainda precisamos
             needed_proxies = max(self.total_bots - len(self.available_proxies), 1)
-            logger.info(f"Precisamos de mais {needed_proxies} proxies válidos")
             
-            # Testa todos os proxies disponíveis até encontrar o suficiente
-            logger.info(f"{Fore.CYAN}Testando {len(proxies_to_test)} proxies para encontrar {needed_proxies} válidos...{Style.RESET_ALL}")
+            # Log inicial do teste
+            logger.info("", extra={
+                'proxy_details': {
+                    'total': len(proxies_to_test),
+                    'needed': needed_proxies,
+                    'valid_proxies': [],
+                    'total_time': 0
+                }
+            })
             
             valid_proxies = []
+            start_time = time.time()
             max_workers = min(10, len(proxies_to_test))
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -132,12 +136,12 @@ class ProxyManager:
                     try:
                         is_valid = future.result()
                         if is_valid:
-                            valid_proxies.append(proxy)
-                            logger.info(f"{Fore.GREEN}Proxy válido encontrado: {proxy}{Style.RESET_ALL}")
+                            valid_proxies.append({
+                                'address': proxy,
+                                'time': time.time() - start_time
+                            })
                             
-                            # Continua testando até ter proxies suficientes
                             if len(valid_proxies) >= needed_proxies:
-                                # Cancela os testes restantes
                                 for f in future_to_proxy:
                                     if not f.done():
                                         f.cancel()
@@ -145,15 +149,22 @@ class ProxyManager:
                     except Exception as e:
                         logger.debug(f"Erro ao testar proxy {proxy}: {e}")
 
+            # Log final do teste
+            logger.info("", extra={
+                'proxy_details': {
+                    'total': len(proxies_to_test),
+                    'needed': needed_proxies,
+                    'valid_proxies': valid_proxies,
+                    'total_time': time.time() - start_time
+                }
+            })
+
             with self.adjust_lock:
-                # Adiciona apenas os novos proxies válidos
-                for proxy in valid_proxies:
+                for proxy_info in valid_proxies:
+                    proxy = proxy_info['address']
                     if proxy not in self.proxies and proxy not in self.available_proxies:
                         self.proxies.append(proxy)
                         self.available_proxies.add(proxy)
-            
-            logger.info(f"{Fore.GREEN}Proxies válidos carregados: {len(valid_proxies)}{Style.RESET_ALL}")
-            logger.info(f"Total de proxies disponíveis agora: {len(self.available_proxies)}")
 
         except Exception as e:
             logger.error(f"Erro ao carregar proxies: {e}")
@@ -174,7 +185,15 @@ class ProxyManager:
     def get_proxy(self, bot_id: int) -> Optional[str]:
         """Obtém um proxy exclusivo para um bot."""
         if bot_id in self.bot_proxies:
-            return self.format_proxy(self.bot_proxies[bot_id])
+            proxy = self.bot_proxies[bot_id]
+            logger.info("", extra={
+                'proxy_allocation': {
+                    'bot_id': bot_id,
+                    'proxy': proxy,
+                    'pool_size': len(self.available_proxies)
+                }
+            })
+            return self.format_proxy(proxy)
 
         max_attempts = 3
         attempt = 0
@@ -189,7 +208,7 @@ class ProxyManager:
                         attempt += 1
                         if attempt < max_attempts:
                             logger.warning(f"BOT {bot_id}: Tentativa {attempt}/{max_attempts} de obter proxy")
-                            time.sleep(2)  # Aguarda antes de tentar novamente
+                            time.sleep(2)
                             continue
                         else:
                             logger.error(f"BOT {bot_id}: Falha ao obter proxy após {max_attempts} tentativas")
@@ -198,7 +217,16 @@ class ProxyManager:
                 # Pega um proxy disponível e o remove da lista de disponíveis
                 proxy = self.available_proxies.pop()
                 self.bot_proxies[bot_id] = proxy
-                logger.info(f"Bot {bot_id} obteve proxy exclusivo: {proxy}")
+                
+                # Log da alocação
+                logger.info("", extra={
+                    'proxy_allocation': {
+                        'bot_id': bot_id,
+                        'proxy': proxy,
+                        'pool_size': len(self.available_proxies)
+                    }
+                })
+                
                 return self.format_proxy(proxy)
 
     def register_proxy_failure(self, proxy: str):
@@ -236,6 +264,41 @@ class ProxyManager:
                 if old_proxy in self.proxies:
                     self.proxies.remove(old_proxy)
             return self.get_proxy(bot_id)
+
+    def test_proxies(self, needed_proxies: int):
+        """Testa proxies e registra resultados."""
+        valid_proxies = []
+        start_time = time.time()
+        
+        proxies_to_test = self._load_proxy_list()
+        
+        logger.info("", extra={
+            'proxy_details': {
+                'total': len(proxies_to_test),
+                'needed': needed_proxies,
+                'valid_proxies': [],
+                'total_time': 0
+            }
+        })
+        
+        for proxy in proxies_to_test:
+            result = self._test_proxy(proxy)
+            if result[0]:  # Se proxy é válido
+                valid_proxies.append({
+                    'address': proxy,
+                    'time': result[1]
+                })
+        
+        total_time = time.time() - start_time
+        
+        logger.info("", extra={
+            'proxy_details': {
+                'total': len(proxies_to_test),
+                'needed': needed_proxies,
+                'valid_proxies': valid_proxies,
+                'total_time': total_time
+            }
+        })
 
 def create_proxy_manager(proxy_file: str = 'proxy.txt', max_response_time: float = 2.0) -> ProxyManager:
     """

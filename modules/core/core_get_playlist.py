@@ -79,6 +79,19 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -
             response = session.get(url, params=params, headers=headers)
             response.raise_for_status()
             
+            # Log detalhado da requisição da playlist
+            logger.info("", extra={
+                'playlist_details': {
+                    'method': 'GET',
+                    'url': response.url,
+                    'headers_sent': dict(response.request.headers),
+                    'headers_received': dict(response.headers),
+                    'status_code': response.status_code,
+                    'reason': response.reason,
+                    'response': response.text[:1000] + ('...' if len(response.text) > 1000 else '')  # Primeiras 1000 chars da playlist
+                }
+            })
+            
             # Se chegou aqui, a requisição foi bem sucedida
             failure_mgr.register_success(bot_id)
             return response.text

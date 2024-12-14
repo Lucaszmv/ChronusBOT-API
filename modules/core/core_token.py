@@ -11,18 +11,19 @@ import logging
 from typing import Dict, Optional
 import time
 from modules.utils.utils_rate_limiter import get_rate_limiter
+from modules.utils.utils_logger import get_logger
+
+logger = get_logger(__name__)
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
 sys.path.append(root_dir)
 
-logger = logging.getLogger(__name__)
-
 def get_playback_access_token_headers(fingerprint: Dict[str, str]) -> Dict[str, str]:
     """Headers para a requisição do token."""
     return {
         'Accept': '*/*',
-        'Accept-Encoding': 'gzip',
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
         'Accept-Language': fingerprint.get('Accept-Language'),
         'Authorization': 'undefined',
         'Cache-Control': 'no-cache',
@@ -79,13 +80,11 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: in
     rate_limiter = get_rate_limiter()
     
     try:
-        # Adquire permissão para requisição de token
-        if not rate_limiter.acquire(bot_id, 'playlist'):  # Usa mesmo limite de playlist por ser menos frequente
+        if not rate_limiter.acquire(bot_id, 'playlist'):
             logger.warning(f"BOT {bot_id}: Limite de requisições de token atingido, aguardando...")
             time.sleep(2)
             return None
             
-        # Importação movida para dentro da função para evitar circular import
         from modules.core.core_session import get_session
         
         url = "https://gql.twitch.tv/gql"
@@ -95,6 +94,20 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: in
         session = get_session(bot_id)
         
         response = session.post(url, headers=headers, json=payload)
+        
+        # Log detalhado da requisição
+        logger.info("", extra={
+            'request_details': {
+                'method': 'POST',
+                'url': url,
+                'headers_sent': headers,
+                'headers_received': dict(response.headers),
+                'status_code': response.status_code,
+                'reason': response.reason,
+                'response': response.text
+            }
+        })
+
         response.raise_for_status()
         data = response.json()
         
