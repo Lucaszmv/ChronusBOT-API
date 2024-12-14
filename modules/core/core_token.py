@@ -22,7 +22,7 @@ def get_playback_access_token_headers(fingerprint: Dict[str, str]) -> Dict[str, 
     """Headers para a requisição do token."""
     return {
         'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Encoding': 'gzip',
         'Accept-Language': fingerprint.get('Accept-Language'),
         'Authorization': 'undefined',
         'Cache-Control': 'no-cache',
