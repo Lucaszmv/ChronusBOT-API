@@ -20,6 +20,17 @@ WARNING_COLOR = Fore.YELLOW
 ERROR_COLOR = Fore.RED
 RESET = Style.RESET_ALL
 
+class ProxyFilter(logging.Filter):
+    def filter(self, record):
+        return 'proxy' in record.name.lower()
+        
+class SessionFilter(logging.Filter):
+    def filter(self, record):
+        return (hasattr(record, 'session_details') or 
+                hasattr(record, 'request_details') or 
+                hasattr(record, 'playlist_details') or
+                hasattr(record, 'segment_details'))
+
 class FileFormatter(logging.Formatter):
     """Formatador para arquivos de log."""
     
@@ -111,28 +122,7 @@ class ConsoleFormatter(logging.Formatter):
     """Mantém o formato original para console com cores."""
     
     def format(self, record):
-        # Ignora mensagens de proxy desnecessárias
-        if 'proxy' in record.name.lower():
-            msg = record.msg.replace('[32m', '').replace('[36m', '').replace('[0m', '')
-            if "Testando" in msg or "Precisamos" in msg:
-                return ""
-        
-        # Limita tamanho da mensagem
-        record.msg = str(record.msg)[:200]
-        
-        # Adiciona cores
-        if record.levelno == logging.INFO:
-            record.msg = f"{INFO_COLOR}{record.msg}{RESET}"
-        elif record.levelno == logging.WARNING:
-            record.msg = f"{WARNING_COLOR}{record.msg}{RESET}"
-        elif record.levelno == logging.ERROR:
-            record.msg = f"{ERROR_COLOR}{record.msg}{RESET}"
-        
-        formatted = f"[{record.levelname[0]}] {record.msg}"
-        
-        # Retorna apenas se houver conteúdo
-        if formatted and formatted.strip():
-            return formatted
+        # Não exibe nenhuma mensagem no console
         return ""
 
 class ProxyFormatter(logging.Formatter):
@@ -183,11 +173,13 @@ class LoggerManager:
 
     def setup_logging(self):
         """Configura o sistema de logging."""
+        # Configura o logger raiz para não mostrar nada no console
         root_logger = logging.getLogger()
+        root_logger.setLevel(logging.CRITICAL)
+        
+        # Remove todos os handlers existentes
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-            
-        root_logger.setLevel(logging.INFO)
         
         # Cria pasta da sessão
         base_log_dir = Path(__file__).parent.parent.parent / 'logs'
@@ -195,7 +187,7 @@ class LoggerManager:
         session_dir = base_log_dir / f'session_{timestamp}'
         session_dir.mkdir(parents=True, exist_ok=True)
         
-        # Handler para log de sessão (detalhes técnicos)
+        # Handler para arquivo (mantém logs normalmente)
         session_log = session_dir / 'session.log'
         session_handler = logging.handlers.RotatingFileHandler(
             session_log,
@@ -204,8 +196,9 @@ class LoggerManager:
             encoding='utf-8'
         )
         session_handler.setFormatter(FileFormatter())
+        session_handler.setLevel(logging.INFO)
         
-        # Handler para log de proxy
+        # Handler para proxy (mantém logs normalmente)
         proxy_log = session_dir / 'proxy.log'
         proxy_handler = logging.handlers.RotatingFileHandler(
             proxy_log,
@@ -214,33 +207,27 @@ class LoggerManager:
             encoding='utf-8'
         )
         proxy_handler.setFormatter(ProxyFormatter())
+        proxy_handler.setLevel(logging.INFO)
         
-        # Handler para console
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(ConsoleFormatter())
+        # Não adiciona console handler
         
-        # Configura filtros para cada handler
-        class ProxyFilter(logging.Filter):
-            def filter(self, record):
-                return 'proxy' in record.name.lower()
-            
-        class SessionFilter(logging.Filter):
-            """Filtra mensagens relacionadas a requisições HTTP e detalhes de sessão."""
-            def filter(self, record):
-                return (hasattr(record, 'session_details') or 
-                        hasattr(record, 'request_details') or 
-                        hasattr(record, 'playlist_details') or
-                        hasattr(record, 'segment_details'))
-        
+        # Configura filtros
         proxy_handler.addFilter(ProxyFilter())
         session_handler.addFilter(SessionFilter())
         
-        # Adiciona handlers
+        # Adiciona apenas os handlers de arquivo
         root_logger.addHandler(session_handler)
         root_logger.addHandler(proxy_handler)
-        root_logger.addHandler(console_handler)
         
-        # Salva informações da sessão
+        # Configura todos os loggers existentes para não mostrarem nada no console
+        for name in logging.root.manager.loggerDict:
+            logger = logging.getLogger(name)
+            logger.setLevel(logging.CRITICAL)
+            # Remove qualquer console handler existente
+            for handler in logger.handlers[:]:
+                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                    logger.removeHandler(handler)
+        
         self.session_dir = session_dir
 
 def get_logger(name: str) -> logging.Logger:

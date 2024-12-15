@@ -13,6 +13,7 @@ from modules.utils.utils_failure_manager import get_failure_manager
 from modules.utils.utils_bot_monitor import get_bot_monitor, BotStatus
 from modules.core.core_session import session_manager
 from modules.utils.utils_proxy_manager import ProxyManager
+from modules.utils.utils_terminal_menu import create_terminal_menu
 
 # Inicializa o Colorama
 init()
@@ -33,11 +34,29 @@ total_anuncios_global = 0
 limite_anuncios_global = 0
 should_stop = threading.Event()
 
+# Variáveis globais para estatísticas
+menu = create_terminal_menu()
+stats_lock = threading.Lock()
+global_stats = {
+    'channels': 0,
+    'completed': '0/0',
+    'threads': 0,
+    'proxies': 0,
+    'ads_per_hour': 0.0
+}
+bot_stats = []
+
+# Adicione estas variáveis globais no início do arquivo
+preroll_anuncios = 0
+midroll_anuncios = 0
+anuncios_lock = Lock()
+
+# Adicione estas variáveis globais para cada bot
+bot_anuncios = {}  # Dicionário para armazenar contadores de cada bot
+
 def print_header():
     """Imprime o cabeçalho do programa."""
-    print(f"\n{INFO_COLOR}{'='*60}{RESET}")
-    print(f"{INFO_COLOR}ChronusBOT-API - Twitch Stream Downloader{RESET}")
-    print(f"{INFO_COLOR}{'='*60}{RESET}\n")
+    pass  # Removido pois agora usamos o menu
 
 def log_session_details(bot_id, session):
     """Loga detalhes completos da sessão."""
@@ -64,42 +83,87 @@ def log_request_details(method, url, headers_sent, response):
         }
     })
 
-def check_anuncios_limit(ads_viewed):
-    """Verifica se o limite global de anúncios foi atingido."""
+def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
+    """Verifica se o limite global de anúncios foi atingido e atualiza contadores por bot."""
     global total_anuncios_global, limite_anuncios_global
+    
     with anuncios_lock:
-        antigo_total = total_anuncios_global
+        # Inicializa contadores para o bot se não existirem
+        if bot_id not in bot_anuncios:
+            bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
+        
+        # Atualiza contadores do bot específico
+        if is_preroll:
+            bot_anuncios[bot_id]['preroll'] += ads_viewed
+        else:
+            bot_anuncios[bot_id]['midroll'] += ads_viewed
+            
+        # Atualiza total global
         total_anuncios_global += ads_viewed
-        logger.info(f"Anúncios: {antigo_total} -> {total_anuncios_global} (+{ads_viewed})")
         
-        # Cria o diretório de logs se n��o existir
-        log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-        os.makedirs(log_dir, exist_ok=True)
-        
-        # Nome do arquivo com timestamp
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(log_dir, f'progresso_anuncios_{timestamp}.txt')
-        
-        # Salva o progresso no arquivo
-        with open(log_file, 'a', encoding='utf-8') as f:
-            progresso = f"Progresso: {total_anuncios_global}/{limite_anuncios_global} anúncios"
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {progresso}\n")
-        
-        logger.info(f"Progresso: {total_anuncios_global}/{limite_anuncios_global} anúncios")
+        # Atualiza o status do bot com seus próprios valores
+        for bot in bot_stats:
+            if bot['id'] == bot_id:
+                bot['ads'] = f"{bot_anuncios[bot_id]['preroll']}/{bot_anuncios[bot_id]['midroll']}"
+                break
         
         if total_anuncios_global >= limite_anuncios_global:
-            mensagem = f"Limite máximo de {limite_anuncios_global} anúncios atingido!"
-            logger.warning(mensagem)
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {mensagem}\n")
             should_stop.set()
             return True
     return False
+
+def update_menu():
+    """Thread para atualizar o menu periodicamente"""
+    while not should_stop.is_set():
+        with stats_lock:
+            # Calcula o total de pre/mid rolls de todos os bots
+            total_preroll = sum(bot['preroll'] for bot in bot_anuncios.values())
+            total_midroll = sum(bot['midroll'] for bot in bot_anuncios.values())
+            
+            global_stats.update({
+                'channels': 1,
+                'completed': f"{total_anuncios_global}/{limite_anuncios_global}",
+                'threads': len(bot_stats),
+                'proxies': len(ProxyManager().proxies),
+                'ads_per_hour': f"{total_preroll}/{total_midroll}"  # Total de todos os bots
+            })
+            
+            menu.render(global_stats, bot_stats)
+        
+        time.sleep(1)
 
 def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
     monitor = get_bot_monitor()
     failure_mgr = get_failure_manager()
+    
+    # Inicializa contadores para este bot
+    bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
+    
+    # Adiciona estatísticas iniciais do bot
+    with stats_lock:
+        bot_stats.append({
+            'id': bot_id,
+            'status': 'ONLINE',
+            'channel': canal_nome,
+            'ads': '0/0',  # Formato preroll/midroll
+            'uptime': '0h 00m',
+            'start_time': datetime.now()
+        })
+    
+    def update_bot_status(status: str, ads: str = None):
+        """Atualiza o status do bot no menu"""
+        with stats_lock:
+            for bot in bot_stats:
+                if bot['id'] == bot_id:
+                    bot['status'] = status
+                    if ads:
+                        bot['ads'] = ads
+                    break
+    
+    def add_bot_event(message: str, event_type: str = 'info'):
+        """Adiciona um evento do bot ao menu"""
+        menu.add_event(bot_id, message, event_type)
     
     def reiniciar_sessao(motivo: str):
         """Função interna para reiniciar a sessão completamente"""
@@ -124,6 +188,9 @@ def bot_worker(canal_nome: str, bot_id: int):
 
     while not should_stop.is_set():
         try:
+            update_bot_status('ONLINE')
+            add_bot_event("Bot iniciado", 'info')
+            
             monitor.update_status(bot_id, BotStatus.INICIANDO)
             
             # Primeira configuração da sessão
@@ -149,6 +216,8 @@ def bot_worker(canal_nome: str, bot_id: int):
                                                  check_limit_callback=check_anuncios_limit)
                     
                     if resultado is False:  # Se retornou False, precisa reiniciar sessão
+                        update_bot_status('RECONECT')
+                        add_bot_event("Reiniciando sessão", 'warning')
                         reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
                         break
                     elif resultado is None:  # Se retornou None, teve erro
@@ -164,56 +233,55 @@ def bot_worker(canal_nome: str, bot_id: int):
                     time.sleep(1)
                     
                 except Exception as e:
+                    update_bot_status('ERRO')
+                    add_bot_event(f"Erro: {str(e)}", 'error')
                     logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
                     erros_consecutivos += 1
                     
         except Exception as e:
+            update_bot_status('ERRO')
+            add_bot_event(f"Erro: {str(e)}", 'error')
             logger.error(f"BOT {bot_id}: Erro crítico: {str(e)}")
             time.sleep(5)
 
 def main():
     global limite_anuncios_global
     
-    logger.info("Iniciando ChronusBOT-API")
-    print_header()
-
     try:
-        canal_nome = input(f"{INFO_COLOR}Digite o nome do canal da Twitch: {RESET}")
+        canal_nome = input("Digite o nome do canal da Twitch: ")
         logger.info(f"Canal solicitado: {canal_nome}")
         
         while True:
             try:
-                num_bots = int(input(f"{INFO_COLOR}Digite o número de bots desejado: {RESET}"))
+                num_bots = int(input("Digite o número de bots desejado: "))
                 if num_bots > 0:
                     break
-                print(f"{ERROR_COLOR}Por favor, digite um número maior que zero.{RESET}")
+                print("Por favor, digite um número maior que zero.")
             except ValueError:
-                print(f"{ERROR_COLOR}Por favor, digite um número válido.{RESET}")
+                print("Por favor, digite um número válido.")
         
         while True:
             try:
-                limite_anuncios_global = int(input(f"{INFO_COLOR}Digite o limite total de anúncios para todos os bots: {RESET}"))
+                limite_anuncios_global = int(input("Digite o limite total de anúncios para todos os bots: "))
                 if limite_anuncios_global > 0:
                     break
-                print(f"{ERROR_COLOR}Por favor, digite um número maior que zero.{RESET}")
+                print("Por favor, digite um número maior que zero.")
             except ValueError:
-                print(f"{ERROR_COLOR}Por favor, digite um número válido.{RESET}")
+                print("Por favor, digite um número válido.")
         
-        print(f"{INFO_COLOR}Verificando se o canal está online...{RESET}")
         if not verificar_canal_online(canal_nome):
-            logger.warning(f"Canal {canal_nome} não está online")
-            print(f"{ERROR_COLOR}O canal {canal_nome} não está online no momento.{RESET}")
             return
         
-        logger.info(f"Canal {canal_nome} está online")
-        print(f"{SUCCESS_COLOR}Canal {canal_nome} está online!{RESET}")
+        # Inicia thread do menu
+        menu_thread = threading.Thread(target=update_menu)
+        menu_thread.daemon = True
+        menu_thread.start()
         
         # Iniciar múltiplos bots em threads
         with ThreadPoolExecutor(max_workers=num_bots) as executor:
             futures = [executor.submit(bot_worker, canal_nome, bot_id) 
                       for bot_id in range(1, num_bots + 1)]
             
-            # Aguardar todas as threads terminarem
             for future in futures:
                 try:
                     future.result()

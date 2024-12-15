@@ -132,75 +132,49 @@ def extrair_segmentos_ts(playlist: str) -> List[str]:
     return [linha for linha in playlist.split('\n') if linha.strip().endswith('.ts')]
 
 def exibir_playlist_atualizada(playlist: str, max_linhas: int = 10) -> None:
-    """
-    Exibe a playlist atual no console de forma limitada.
-
-    Args:
-        playlist (str): Conteúdo da playlist.
-        max_linhas (int): Número máximo de linhas para exibir.
-    """
-    print("\nPlaylist atualizada (primeiras linhas):")
-    linhas = playlist.strip().split('\n')
-    for i, linha in enumerate(linhas[:max_linhas], 1):
-        print(f"   {i}: {linha}")
-    if len(linhas) > max_linhas:
-        print(f"   ... ({len(linhas) - max_linhas} linhas omitidas)")
-    print()
+    """Função mantida para compatibilidade, mas não exibe nada."""
+    pass
 
 def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, limite_anuncios: int = None, check_limit_callback=None):
-    """
-    Atualiza continuamente a playlist e adiciona novos segmentos à fila.
-    """
+    """Atualiza continuamente a playlist e adiciona novos segmentos à fila."""
     fingerprint = session_manager.get_fingerprint(bot_id)
     segmentos_conhecidos = set()
     ultima_playlist = ""
     fila_segmentos = deque(maxlen=100)
     
-    # Criar detector de anúncios com limite e callback
     ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None, 
                                    check_limit_callback=check_limit_callback,
                                    bot_id=bot_id)
 
-    # Contador para fila vazia e tentativas
     fila_vazia_inicio = None
     TEMPO_MAXIMO_FILA_VAZIA = 30
     tentativas_recuperacao = 0
     MAX_TENTATIVAS_RECUPERACAO = 3
     
-    # Função interna para tentar recuperar a playlist
     def tentar_recuperar_playlist():
         nonlocal token_data, link_qualidade
-        logger.warning(f"BOT {bot_id}: Tentativa {tentativas_recuperacao + 1}/{MAX_TENTATIVAS_RECUPERACAO} de recuperar playlist")
-        
-        # Tenta obter novo token
         novo_token = obter_playback_access_token(canal_nome, fingerprint, bot_id)
         if not novo_token:
             return False
         token_data = novo_token
         
-        # Tenta obter nova playlist master
         nova_playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
         if not nova_playlist:
             return False
             
-        # Extrai e seleciona nova qualidade
         novos_links = extrair_links_qualidade(nova_playlist)
         if not novos_links:
             return False
         link_qualidade = obter_link_aleatorio(novos_links)
         
-        # Verifica se a nova playlist tem segmentos
         playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
         if not playlist_qualidade:
             return False
             
-        # Verifica se tem segmentos
         novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
         if not novos_segmentos:
             return False
             
-        # Se chegou aqui, realmente recuperou com sucesso
-        logger.info(f"BOT {bot_id}: Recuperação bem sucedida na tentativa {tentativas_recuperacao} - {len(novos_segmentos)} segmentos encontrados")
         return True
 
     # Obter playlist inicial com retry
@@ -214,26 +188,20 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
         if not playlist_m3u8:
             if precisa_nova_sessao:
                 sessao_tentativas += 1
-                if sessao_tentativas < max_sessoes:
-                    print(f"{WARNING_COLOR}Iniciando nova sessão ({sessao_tentativas}/{max_sessoes}){RESET}")
-                    session_manager.close_session(bot_id)
-                    continue
-                else:
-                    print(f"{ERROR_COLOR}Falha após {max_sessoes} tentativas de sessão{RESET}")
+                if sessao_tentativas >= max_sessoes:
                     return None
+                session_manager.close_session(bot_id)
+                continue
             else:
-                print(f"{ERROR_COLOR}Falha ao obter playlist inicial{RESET}")
                 return None
 
     # Extrair link de qualidade
     links_qualidade = extrair_links_qualidade(playlist_m3u8)
     if not links_qualidade:
-        print(f"{ERROR_COLOR}Nenhum link de qualidade encontrado{RESET}")
         return None
 
     link_qualidade = obter_link_aleatorio(links_qualidade)
     if not link_qualidade:
-        print(f"{ERROR_COLOR}Falha ao selecionar qualidade{RESET}")
         return None
 
     # Iniciar downloader em thread separada
@@ -252,17 +220,14 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                     if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:
                         tentativas_recuperacao += 1
                         if tentar_recuperar_playlist():
-                            logger.info(f"BOT {bot_id}: Recuperação bem sucedida na tentativa {tentativas_recuperacao}")
                             fila_vazia_inicio = None  # Reseta contador
                             tentativas_recuperacao = 0  # Reseta tentativas
                             continue
                         else:
-                            logger.warning(f"BOT {bot_id}: Falha na tentativa {tentativas_recuperacao} de recuperação")
                             time.sleep(2)  # Pequeno delay entre tentativas
                             continue
                     
                     # Se todas as tentativas falharam, solicita troca de sessão
-                    logger.warning(f"BOT {bot_id}: Todas as {MAX_TENTATIVAS_RECUPERACAO} tentativas de recuperação falharam")
                     return False
             else:
                 fila_vazia_inicio = None
@@ -270,29 +235,19 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
 
             # Adquire permissão para atualizar playlist
             if not rate_limiter.acquire(bot_id, 'playlist'):
-                logger.warning(f"BOT {bot_id}: Limite de atualizações atingido, aguardando...")
                 time.sleep(2)
                 continue
                 
             playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
             if not playlist_qualidade:
-                print(f"{WARNING_COLOR}Tentativa de atualizar playlist falhou{RESET}")
                 time.sleep(2)
                 continue
 
             # Processar playlist para detectar anúncios
             ad_detector.process_playlist(playlist_qualidade)
             
-            print("\n=== Playlist M3U8 (10 primeiras linhas) ===")
-            linhas = playlist_qualidade.strip().split('\n')
-            for i, linha in enumerate(linhas[:10], 1):
-                linha_truncada = linha[:100] + "..." if len(linha) > 100 else linha
-                print(f"{i:2}: {linha_truncada}")
-            print("=" * 50 + "\n")
-
             novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
             if not novos_segmentos:
-                print(f"{WARNING_COLOR}Nenhum segmento encontrado na playlist{RESET}")
                 time.sleep(2)
                 continue
 
@@ -306,18 +261,12 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                         
                 if segmentos_adicionados > 0:
                     ultima_playlist = playlist_qualidade
-                    print(f"{MAGENTA_COLOR}Playlist atualizada! +{segmentos_adicionados} segmentos{RESET}")
-                else:
-                    print(f"{WARNING_COLOR}Nenhum segmento novo encontrado{RESET}")
-            else:
-                print(f"{INFO_COLOR}Aguardando novos segmentos...{RESET}")
+            
             time.sleep(2)
 
         except KeyboardInterrupt:
-            print(f"\n{INFO_COLOR}Encerrando atualização de playlist...{RESET}")
             return True
         except Exception as e:
-            print(f"{ERROR_COLOR}Erro ao atualizar playlist: {e}{RESET}")
             time.sleep(2)
 
         finally:

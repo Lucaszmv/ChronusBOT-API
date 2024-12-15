@@ -76,15 +76,10 @@ def simular_download_segmento(url, bot_id=None):
         }
 
         response = session.head(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            print(f"{SUCCESS_COLOR}BOT {bot_id}: Segmento baixado: {url[:70]}...{RESET}")
-            return True
-            
-        print(f"{ERROR_COLOR}BOT {bot_id}: Falha ao baixar segmento (HTTP {response.status_code}): {url}{RESET}")
-        return False
+        return response.status_code == 200
 
     except Exception as e:
-        print(f"{ERROR_COLOR}BOT {bot_id}: Erro ao baixar segmento: {str(e)}{RESET}")
+        logger.error(f"BOT {bot_id}: Erro ao baixar segmento: {str(e)}")
         return False
 
     finally:
@@ -98,26 +93,20 @@ def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
         queue_size = len(fila_segmentos)
         
         if queue_size == 0:
-            print(f"{WARNING_COLOR}BOT {bot_id}: Fila de segmentos vazia. Aguardando...{RESET}")
             time.sleep(0.5)
             continue
 
         url = fila_segmentos[0]
-        print(f"{INFO_COLOR}BOT {bot_id}: Baixando: {url[:50]}...{RESET}")
-
         success = simular_download_segmento(url, bot_id)
         
         if success:
             segmentos_baixados.add(url)
             fila_segmentos.popleft()
             segmentos_processados += 1
-            print(f"{Fore.WHITE}BOT {bot_id}: Segmentos processados: {segmentos_processados}{RESET}")
         else:
-            print(f"{ERROR_COLOR}BOT {bot_id}: Falha ao baixar segmento{RESET}")
             time.sleep(1)
 
         wait_time = WAIT_TIME()
-        print(f"{INFO_COLOR}BOT {bot_id}: Próximo download em: {wait_time:.2f}s | Fila: {queue_size} segmentos{RESET}")
         time.sleep(wait_time)
 
 def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
@@ -126,4 +115,3 @@ def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
     thread_downloader = threading.Thread(target=processar_fila_download, args=(fila_segmentos, bot_id))
     thread_downloader.daemon = True
     thread_downloader.start()
-    print(f"{INFO_COLOR}BOT {bot_id}: Simulador de download iniciado em thread separada{RESET}")

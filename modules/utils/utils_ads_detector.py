@@ -157,22 +157,21 @@ class AdDetector:
             pod_length = int(self.current_pod_info.get('X-TV-TWITCH-AD-POD-LENGTH', '1'))
             self.total_ads_viewed += pod_length
             
+            # Determina se é preroll ou midroll
+            is_preroll = self.current_pod_info.get('X-TV-TWITCH-AD-ROLL-TYPE', '').lower() == 'preroll'
+            
+            # Chama o callback com o tipo correto de anúncio
+            if self.check_limit_callback:
+                self.check_limit_callback(pod_length, is_preroll, self.bot_id)
+            
             self.print_ad_viewed_success(self.last_segment)
             self.ad_start_time = None
             self.ad_segments = []
             self.current_pod_info = None
             self.current_pod_ad_count = 0
             
-            # Verifica limite usando o callback se disponível
-            if self.check_limit_callback and self.check_limit_callback(pod_length):
-                logger.info(f"BOT {self.bot_id}: Anúncios: {self.total_ads_viewed - pod_length} -> {self.total_ads_viewed} (+{pod_length})")
-                logger.info(f"BOT {self.bot_id}: Progresso: {self.total_ads_viewed}/{self.max_total_ads} anúncios")
-                self.print_limit_reached()
-                sys.exit(0)
             # Verifica limite local se não houver callback
-            elif self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
-                logger.info(f"BOT {self.bot_id}: Anúncios: {self.total_ads_viewed - pod_length} -> {self.total_ads_viewed} (+{pod_length})")
-                logger.info(f"BOT {self.bot_id}: Progresso: {self.total_ads_viewed}/{self.max_total_ads} anúncios")
+            if self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
                 self.print_limit_reached()
                 sys.exit(0)
 
