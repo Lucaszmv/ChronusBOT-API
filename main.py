@@ -250,7 +250,7 @@ def bot_worker(canal_nome: str, bot_id: int):
                     if resultado is False:  # Se retornou False, precisa reiniciar sessão
                         update_bot_status('RECONECT')
                         add_bot_event("Reiniciando sessão", 'warning')
-                        reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
+                        reiniciar_sessao("Fila vazia persistente após tentativas de recupera��ão")
                         break
                     elif resultado is None:  # Se retornou None, teve erro
                         erros_consecutivos += 1
@@ -276,34 +276,94 @@ def bot_worker(canal_nome: str, bot_id: int):
             logger.error(f"BOT {bot_id}: Erro crítico: {str(e)}")
             time.sleep(5)
 
+def obter_entrada_canal() -> str:
+    """Obtém e valida o nome do canal."""
+    while True:
+        canal = input(f"\n{Fore.GREEN}Digite o nome do canal da Twitch: {Style.RESET_ALL}").strip()
+        
+        if not canal:
+            print(f"{Fore.RED}Erro: O nome do canal não pode estar vazio.{Style.RESET_ALL}")
+            continue
+            
+        if len(canal) < 2:
+            print(f"{Fore.RED}Erro: O nome do canal deve ter pelo menos 2 caracteres.{Style.RESET_ALL}")
+            continue
+            
+        return canal
+
+def obter_numero_bots() -> int:
+    """Obtém e valida o número de bots."""
+    while True:
+        try:
+            num_bots = int(input(f"\n{Fore.GREEN}Digite o número de bots (1-50): {Style.RESET_ALL}"))
+            
+            if num_bots < 1:
+                print(f"{Fore.RED}Erro: O número de bots deve ser maior que zero.{Style.RESET_ALL}")
+                continue
+                
+            if num_bots > 50:
+                print(f"{Fore.RED}Erro: O número máximo de bots permitido é 50.{Style.RESET_ALL}")
+                continue
+                
+            return num_bots
+            
+        except ValueError:
+            print(f"{Fore.RED}Erro: Por favor, digite um número válido.{Style.RESET_ALL}")
+
+def obter_limite_anuncios() -> int:
+    """Obtém e valida o limite de anúncios."""
+    while True:
+        try:
+            limite = int(input(f"\n{Fore.GREEN}Digite o limite total de anúncios: {Style.RESET_ALL}"))
+            
+            if limite < 1:
+                print(f"{Fore.RED}Erro: O limite de anúncios deve ser maior que zero.{Style.RESET_ALL}")
+                continue
+                
+            return limite
+            
+        except ValueError:
+            print(f"{Fore.RED}Erro: Por favor, digite um número válido.{Style.RESET_ALL}")
+
+def exibir_configuracoes(canal: str, num_bots: int, limite_anuncios: int):
+    """Exibe um resumo das configurações."""
+    print(f"\n{Fore.CYAN}RESUMO DAS CONFIGURAÇÕES{Style.RESET_ALL}")
+    
+    print(f"\n{Fore.WHITE}Canal: {Fore.GREEN}{canal}")
+    print(f"{Fore.WHITE}Número de Bots: {Fore.GREEN}{num_bots}")
+    print(f"{Fore.WHITE}Limite de Anúncios: {Fore.GREEN}{limite_anuncios}{Style.RESET_ALL}")
+    
+    print(f"\n{Fore.YELLOW}Pressione ENTER para iniciar ou CTRL+C para cancelar...{Style.RESET_ALL}")
+    input()
+
 def main():
     global limite_anuncios_global
     
     try:
-        canal_nome = input("Digite o nome do canal da Twitch: ")
-        logger.info(f"Canal solicitado: {canal_nome}")
+        # Limpa a tela
+        os.system('cls' if os.name == 'nt' else 'clear')
         
-        while True:
-            try:
-                num_bots = int(input("Digite o número de bots desejado: "))
-                if num_bots > 0:
-                    break
-                print("Por favor, digite um número maior que zero.")
-            except ValueError:
-                print("Por favor, digite um número válido.")
+        # Calcula o padding para centralização
+        terminal_width = os.get_terminal_size().columns
+        padding = " " * ((terminal_width - 80) // 2)
         
-        while True:
-            try:
-                limite_anuncios_global = int(input("Digite o limite total de anúncios para todos os bots: "))
-                if limite_anuncios_global > 0:
-                    break
-                print("Por favor, digite um número maior que zero.")
-            except ValueError:
-                print("Por favor, digite um número válido.")
+        # Cabeçalho com título em negrito e branco
+        print(f"\n")
+        print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}                     ")
+        print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+        print(f"{padding}                       Made by: {Fore.RED}Velbots{Style.RESET_ALL} │ Version: {Fore.RED}1.0.0{Style.RESET_ALL}          ")
+        print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
         
+        # Obtém as configurações
+        canal_nome = obter_entrada_canal()
+        num_bots = obter_numero_bots()
+        limite_anuncios_global = obter_limite_anuncios()
+        
+        # Verifica se o canal está online
         if not verificar_canal_online(canal_nome):
+            print(f"\n{Fore.RED}Erro: Canal offline ou não encontrado.{Style.RESET_ALL}")
             return
-        
+            
         # Inicia thread do menu
         menu_thread = threading.Thread(target=update_menu)
         menu_thread.daemon = True
