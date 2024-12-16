@@ -1,7 +1,7 @@
 {
     "channels": [
-        "baiano"
+        "gaules"
     ],
-    "bots": 10,
-    "ads_limit": 150
+    "bots": 15,
+    "ads_limit": 100
 }

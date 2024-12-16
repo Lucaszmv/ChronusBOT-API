@@ -16,6 +16,8 @@ from modules.utils.utils_proxy_manager import ProxyManager
 from modules.utils.utils_terminal_menu import create_terminal_menu
 import json
 from pathlib import Path
+import questionary
+from questionary import Style as QuestionaryStyle
 
 # Inicializa o Colorama
 init()
@@ -55,6 +57,19 @@ anuncios_lock = Lock()
 
 # Adicione estas variáveis globais para cada bot
 bot_anuncios = {}  # Dicionário para armazenar contadores de cada bot
+
+# Defina o estilo personalizado
+custom_style = QuestionaryStyle([
+    ('qmark', 'fg:#000000'),  # ? em preto (praticamente invisível)
+    ('question', 'fg:#ff0000 bold'),  # Pergunta em vermelho
+    ('answer', 'fg:#ff5733 bold'),
+    ('pointer', 'fg:#ff0000 bold'),
+    ('highlighted', 'fg:#ff0000 bold'),
+    ('selected', 'fg:#00ff00'),
+    ('text', 'fg:#ffffff'),
+    ('instruction', 'fg:#ffffff'),
+    ('disabled', 'fg:#858585 italic')
+])
 
 def update_bot_ip(bot_id: int, ip: str):
     """Atualiza o IP do bot nas estatísticas."""
@@ -284,29 +299,24 @@ def obter_entrada_canal() -> str:
     canais_salvos = config['channels']
     
     if canais_salvos:
-        print(f"\n{Fore.RED}Canais salvos anteriormente:{Style.RESET_ALL}")
-        for i, canal in enumerate(canais_salvos, 1):
-            print(f"{i}. {canal}")
-        print(f"\n{Fore.YELLOW}Digite um número para selecionar um canal ou digite um novo nome de canal{Style.RESET_ALL}")
+        canal = questionary.select(
+            "Selecione um canal ou digite um novo:",
+            choices=[*canais_salvos, "Novo canal"],
+            style=custom_style
+        ).ask()
+        
+        if canal == "Novo canal":
+            canal = questionary.text(
+                "Digite o nome do novo canal:",
+                style=custom_style
+            ).ask()
+    else:
+        canal = questionary.text(
+            "Digite o nome do canal:",
+            style=custom_style
+        ).ask()
     
-    while True:
-        entrada = input(f"\n{Fore.RED}Digite o nome do canal da Twitch: {Style.RESET_ALL}").strip()
-        
-        # Verifica se é um número para selecionar canal salvo
-        if entrada.isdigit() and canais_salvos:
-            idx = int(entrada) - 1
-            if 0 <= idx < len(canais_salvos):
-                return canais_salvos[idx]
-        
-        if not entrada:
-            print(f"{Fore.RED}Erro: O nome do canal não pode estar vazio.{Style.RESET_ALL}")
-            continue
-            
-        if len(entrada) < 2:
-            print(f"{Fore.RED}Erro: O nome do canal deve ter pelo menos 2 caracteres.{Style.RESET_ALL}")
-            continue
-            
-        return entrada
+    return canal
 
 def obter_numero_bots() -> int:
     """Obtém e valida o número de bots."""
@@ -315,26 +325,22 @@ def obter_numero_bots() -> int:
     
     while True:
         try:
-            entrada = input(f"\n{Fore.RED}Digite o número de bots (1-50) [{valor_padrao}]: {Style.RESET_ALL}")
+            entrada = questionary.text(
+                f"Digite o número de bots (1-50) [{valor_padrao}]:",
+                style=custom_style
+            ).ask()
             
-            # Se entrada vazia, usa valor padrão
             if not entrada:
                 return valor_padrao
                 
             num_bots = int(entrada)
+            if 1 <= num_bots <= 50:
+                return num_bots
             
-            if num_bots < 1:
-                print(f"{Fore.RED}Erro: O número de bots deve ser maior que zero.{Style.RESET_ALL}")
-                continue
-                
-            if num_bots > 50:
-                print(f"{Fore.RED}Erro: O número máximo de bots permitido é 50.{Style.RESET_ALL}")
-                continue
-                
-            return num_bots
+            print(f"{Fore.RED}Erro: O número deve estar entre 1 e 50.{Style.RESET_ALL}")
             
         except ValueError:
-            print(f"{Fore.RED}Erro: Por favor, digite um número válido.{Style.RESET_ALL}")
+            print(f"{Fore.RED}Erro: Digite um número válido.{Style.RESET_ALL}")
 
 def obter_limite_anuncios() -> int:
     """Obtém e valida o limite de anúncios."""
@@ -343,22 +349,22 @@ def obter_limite_anuncios() -> int:
     
     while True:
         try:
-            entrada = input(f"\n{Fore.RED}Digite o limite total de anúncios [{valor_padrao}]: {Style.RESET_ALL}")
+            entrada = questionary.text(
+                f"Digite o limite total de anúncios [{valor_padrao}]:",
+                style=custom_style
+            ).ask()
             
-            # Se entrada vazia, usa valor padrão
             if not entrada:
                 return valor_padrao
                 
             limite = int(entrada)
+            if limite > 0:
+                return limite
             
-            if limite < 1:
-                print(f"{Fore.RED}Erro: O limite de anúncios deve ser maior que zero.{Style.RESET_ALL}")
-                continue
-                
-            return limite
+            print(f"{Fore.RED}Erro: O limite deve ser maior que zero.{Style.RESET_ALL}")
             
         except ValueError:
-            print(f"{Fore.RED}Erro: Por favor, digite um número válido.{Style.RESET_ALL}")
+            print(f"{Fore.RED}Erro: Digite um número válido.{Style.RESET_ALL}")
 
 def exibir_configuracoes(canal: str, num_bots: int, limite_anuncios: int):
     """Exibe um resumo das configurações."""
@@ -447,18 +453,19 @@ def exibir_menu_principal():
     print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
     print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"\n")
-    print(f"{Fore.WHITE}[{Fore.RED}1{Fore.WHITE}] {Fore.WHITE}Iniciar{Style.RESET_ALL}")
-    print(f"{Fore.WHITE}[{Fore.RED}2{Fore.WHITE}] {Fore.WHITE}Alterar configurações{Style.RESET_ALL}")
-    print(f"\n")
     
-    while True:
-        try:
-            opcao = input(f"{Fore.RED}Digite sua escolha: {Style.RESET_ALL}")
-            if opcao in ['1', '2']:
-                return int(opcao)
-            print(f"{Fore.RED}Opção inválida. Digite 1 ou 2.{Style.RESET_ALL}")
-        except ValueError:
-            print(f"{Fore.RED}Opção inválida. Digite 1 ou 2.{Style.RESET_ALL}")
+    opcoes = {
+        'Iniciar': 1,
+        'Alterar configurações': 2
+    }
+    
+    escolha = questionary.select(
+        '\nEscolha uma opção:',
+        choices=list(opcoes.keys()),
+        style=custom_style
+    ).ask()
+    
+    return opcoes[escolha]
 
 def main():
     global limite_anuncios_global
@@ -520,38 +527,66 @@ def main():
                 print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
                 print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
                 
-                print(f"{Fore.RED}Configurações Atuais:{Style.RESET_ALL}")
-                print(f"\n{Fore.WHITE}[{Fore.RED}1{Fore.WHITE}] Número de Bots: {config['bots']}")
-                print(f"{Fore.WHITE}[{Fore.RED}2{Fore.WHITE}] Limite de Anúncios: {config['ads_limit']}")
-                print(f"{Fore.WHITE}[{Fore.RED}3{Fore.WHITE}] Gerenciar Canais")
-                print(f"{Fore.WHITE}[{Fore.RED}4{Fore.WHITE}] Voltar")
-                print(f"\nCanais Salvos:")
-                for i, canal in enumerate(config['channels'], 1):
-                    print(f"{i}. {canal}")
+                opcoes = [
+                    f"Número de Bots: {config['bots']}",
+                    f"Limite de Anúncios: {config['ads_limit']}",
+                    "Gerenciar Canais",
+                    "Voltar"
+                ]
                 
-                while True:
-                    try:
-                        escolha = input(f"\n{Fore.RED}Digite sua escolha: {Style.RESET_ALL}")
-                        if escolha == '1':
-                            config['bots'] = obter_numero_bots()
-                            save_config(config)
-                            break
-                        elif escolha == '2':
-                            config['ads_limit'] = obter_limite_anuncios()
-                            save_config(config)
-                            break
-                        elif escolha == '3':
-                            canal_nome = obter_entrada_canal()
-                            add_channel_to_config(canal_nome)
-                            break
-                        elif escolha == '4':
-                            break
-                        else:
-                            print(f"{Fore.RED}Opção inválida. Digite 1, 2, 3 ou 4.{Style.RESET_ALL}")
-                    except ValueError:
-                        print(f"{Fore.RED}Opção inválida. Digite 1, 2, 3 ou 4.{Style.RESET_ALL}")
+                escolha = questionary.select(
+                    '\nEscolha uma opção:',
+                    choices=opcoes,
+                    style=custom_style
+                ).ask()
                 
-                input(f"\n{Fore.YELLOW}Configurações salvas! Pressione ENTER para continuar...{Style.RESET_ALL}")
+                if "Número de Bots" in escolha:
+                    config['bots'] = obter_numero_bots()
+                    save_config(config)
+                elif "Limite de Anúncios" in escolha:
+                    config['ads_limit'] = obter_limite_anuncios()
+                    save_config(config)
+                elif "Gerenciar Canais" in escolha:
+                    acao = questionary.select(
+                        '\nO que deseja fazer?',
+                        choices=[
+                            'Adicionar canal',
+                            'Remover canal',
+                            'Voltar'
+                        ],
+                        style=custom_style
+                    ).ask()
+                    
+                    if acao == 'Adicionar canal':
+                        canal_nome = obter_entrada_canal()
+                        add_channel_to_config(canal_nome)
+                    elif acao == 'Remover canal':
+                        if not config['channels']:
+                            print(f"{Fore.RED}Não há canais para remover.{Style.RESET_ALL}")
+                            input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
+                            continue
+                            
+                        # Garante que todos os canais válidos sejam listados
+                        canais_validos = []
+                        for canal in config['channels']:
+                            if canal and isinstance(canal, str):
+                                canais_validos.append(canal)
+                        
+                        canal_remover = questionary.select(
+                            '\nSelecione o canal para remover:',
+                            choices=[*canais_validos, 'Voltar'],
+                            style=custom_style
+                        ).ask()
+                        
+                        if canal_remover != 'Voltar':
+                            config['channels'].remove(canal_remover)
+                            save_config(config)
+                            print(f"{Fore.GREEN}Canal {canal_remover} removido com sucesso!{Style.RESET_ALL}")
+                elif "Voltar" in escolha:
+                    continue
+                
+                print(f"\n{Fore.YELLOW}Configurações salvas! Voltando ao menu principal...{Style.RESET_ALL}")
+                time.sleep(3)
 
     except KeyboardInterrupt:
         logger.info("Programa encerrado pelo usuário")
