@@ -296,23 +296,28 @@ def bot_worker(canal_nome: str, bot_id: int):
 def obter_entrada_canal() -> str:
     """Obtém e valida o nome do canal."""
     config = load_config()
-    canais_salvos = config['channels']
+    # Filtra valores nulos ou vazios da lista de canais
+    canais_salvos = [canal for canal in config['channels'] if canal and isinstance(canal, str)]
     
     if canais_salvos:
         canal = questionary.select(
-            "Selecione um canal ou digite um novo:",
-            choices=[*canais_salvos, "Novo canal"],
+            "\nSelecione um canal ou digite um novo:",
+            choices=[*canais_salvos, "Novo canal", "Voltar"],
             style=custom_style
         ).ask()
         
+        if canal == "Voltar":
+            return None
+        
         if canal == "Novo canal":
+            mostrar_cabecalho()  # Limpa a tela e mostra o cabeçalho novamente
             canal = questionary.text(
-                "Digite o nome do novo canal:",
+                "\nDigite o nome do novo canal:",
                 style=custom_style
             ).ask()
     else:
         canal = questionary.text(
-            "Digite o nome do canal:",
+            "\nDigite o nome do canal:",
             style=custom_style
         ).ask()
     
@@ -326,7 +331,7 @@ def obter_numero_bots() -> int:
     while True:
         try:
             entrada = questionary.text(
-                f"Digite o número de bots (1-50) [{valor_padrao}]:",
+                f"\nDigite o número de bots [{valor_padrao}]:",
                 style=custom_style
             ).ask()
             
@@ -350,7 +355,7 @@ def obter_limite_anuncios() -> int:
     while True:
         try:
             entrada = questionary.text(
-                f"Digite o limite total de anúncios [{valor_padrao}]:",
+                f"\nDigite o limite total de anúncios [{valor_padrao}]:",
                 style=custom_style
             ).ask()
             
@@ -467,6 +472,21 @@ def exibir_menu_principal():
     
     return opcoes[escolha]
 
+def mostrar_cabecalho():
+    """Mostra o cabeçalho padrão do programa."""
+    # Limpa a tela
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    # Mostra o cabeçalho
+    terminal_width = os.get_terminal_size().columns
+    padding = " " * ((terminal_width - 80) // 2)
+    print(f"\n")
+    print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"\n")
+
 def main():
     global limite_anuncios_global
     
@@ -526,7 +546,7 @@ def main():
                 print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
                 print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
                 print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
-                
+                print(f"\n") 
                 opcoes = [
                     f"Número de Bots: {config['bots']}",
                     f"Limite de Anúncios: {config['ads_limit']}",
@@ -541,12 +561,15 @@ def main():
                 ).ask()
                 
                 if "Número de Bots" in escolha:
+                    mostrar_cabecalho()
                     config['bots'] = obter_numero_bots()
                     save_config(config)
                 elif "Limite de Anúncios" in escolha:
+                    mostrar_cabecalho()
                     config['ads_limit'] = obter_limite_anuncios()
                     save_config(config)
                 elif "Gerenciar Canais" in escolha:
+                    mostrar_cabecalho()
                     acao = questionary.select(
                         '\nO que deseja fazer?',
                         choices=[
@@ -558,9 +581,17 @@ def main():
                     ).ask()
                     
                     if acao == 'Adicionar canal':
+                        mostrar_cabecalho()  # Limpa a tela antes de mostrar o menu de seleção
                         canal_nome = obter_entrada_canal()
-                        add_channel_to_config(canal_nome)
+                        if canal_nome:  # Só adiciona se não for None (não escolheu Voltar)
+                            add_channel_to_config(canal_nome)
+                            mostrar_cabecalho()  # Limpa a tela e mostra o cabeçalho
+                            # Recarrega a configuração para ter a lista atualizada
+                            config = load_config()
                     elif acao == 'Remover canal':
+                        mostrar_cabecalho()  # Limpa a tela antes de mostrar o menu de remoção
+                        # Recarrega a configuração para ter a lista mais atual
+                        config = load_config()
                         if not config['channels']:
                             print(f"{Fore.RED}Não há canais para remover.{Style.RESET_ALL}")
                             input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
@@ -585,7 +616,7 @@ def main():
                 elif "Voltar" in escolha:
                     continue
                 
-                print(f"\n{Fore.YELLOW}Configurações salvas! Voltando ao menu principal...{Style.RESET_ALL}")
+                print(f"\n{Fore.WHITE}Configurações salvas! Voltando ao menu principal...{Style.RESET_ALL}")
                 time.sleep(3)
 
     except KeyboardInterrupt:
