@@ -14,6 +14,8 @@ from modules.utils.utils_bot_monitor import get_bot_monitor, BotStatus
 from modules.core.core_session import session_manager
 from modules.utils.utils_proxy_manager import ProxyManager
 from modules.utils.utils_terminal_menu import create_terminal_menu
+import json
+from pathlib import Path
 
 # Inicializa o Colorama
 init()
@@ -250,7 +252,7 @@ def bot_worker(canal_nome: str, bot_id: int):
                     if resultado is False:  # Se retornou False, precisa reiniciar sessão
                         update_bot_status('RECONECT')
                         add_bot_event("Reiniciando sessão", 'warning')
-                        reiniciar_sessao("Fila vazia persistente após tentativas de recupera��ão")
+                        reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
                         break
                     elif resultado is None:  # Se retornou None, teve erro
                         erros_consecutivos += 1
@@ -278,24 +280,48 @@ def bot_worker(canal_nome: str, bot_id: int):
 
 def obter_entrada_canal() -> str:
     """Obtém e valida o nome do canal."""
+    config = load_config()
+    canais_salvos = config['channels']
+    
+    if canais_salvos:
+        print(f"\n{Fore.RED}Canais salvos anteriormente:{Style.RESET_ALL}")
+        for i, canal in enumerate(canais_salvos, 1):
+            print(f"{i}. {canal}")
+        print(f"\n{Fore.YELLOW}Digite um número para selecionar um canal ou digite um novo nome de canal{Style.RESET_ALL}")
+    
     while True:
-        canal = input(f"\n{Fore.GREEN}Digite o nome do canal da Twitch: {Style.RESET_ALL}").strip()
+        entrada = input(f"\n{Fore.RED}Digite o nome do canal da Twitch: {Style.RESET_ALL}").strip()
         
-        if not canal:
+        # Verifica se é um número para selecionar canal salvo
+        if entrada.isdigit() and canais_salvos:
+            idx = int(entrada) - 1
+            if 0 <= idx < len(canais_salvos):
+                return canais_salvos[idx]
+        
+        if not entrada:
             print(f"{Fore.RED}Erro: O nome do canal não pode estar vazio.{Style.RESET_ALL}")
             continue
             
-        if len(canal) < 2:
+        if len(entrada) < 2:
             print(f"{Fore.RED}Erro: O nome do canal deve ter pelo menos 2 caracteres.{Style.RESET_ALL}")
             continue
             
-        return canal
+        return entrada
 
 def obter_numero_bots() -> int:
     """Obtém e valida o número de bots."""
+    config = load_config()
+    valor_padrao = config['bots']
+    
     while True:
         try:
-            num_bots = int(input(f"\n{Fore.GREEN}Digite o número de bots (1-50): {Style.RESET_ALL}"))
+            entrada = input(f"\n{Fore.RED}Digite o número de bots (1-50) [{valor_padrao}]: {Style.RESET_ALL}")
+            
+            # Se entrada vazia, usa valor padrão
+            if not entrada:
+                return valor_padrao
+                
+            num_bots = int(entrada)
             
             if num_bots < 1:
                 print(f"{Fore.RED}Erro: O número de bots deve ser maior que zero.{Style.RESET_ALL}")
@@ -312,9 +338,18 @@ def obter_numero_bots() -> int:
 
 def obter_limite_anuncios() -> int:
     """Obtém e valida o limite de anúncios."""
+    config = load_config()
+    valor_padrao = config['ads_limit']
+    
     while True:
         try:
-            limite = int(input(f"\n{Fore.GREEN}Digite o limite total de anúncios: {Style.RESET_ALL}"))
+            entrada = input(f"\n{Fore.RED}Digite o limite total de anúncios [{valor_padrao}]: {Style.RESET_ALL}")
+            
+            # Se entrada vazia, usa valor padrão
+            if not entrada:
+                return valor_padrao
+                
+            limite = int(entrada)
             
             if limite < 1:
                 print(f"{Fore.RED}Erro: O limite de anúncios deve ser maior que zero.{Style.RESET_ALL}")
@@ -329,56 +364,194 @@ def exibir_configuracoes(canal: str, num_bots: int, limite_anuncios: int):
     """Exibe um resumo das configurações."""
     print(f"\n{Fore.CYAN}RESUMO DAS CONFIGURAÇÕES{Style.RESET_ALL}")
     
-    print(f"\n{Fore.WHITE}Canal: {Fore.GREEN}{canal}")
-    print(f"{Fore.WHITE}Número de Bots: {Fore.GREEN}{num_bots}")
-    print(f"{Fore.WHITE}Limite de Anúncios: {Fore.GREEN}{limite_anuncios}{Style.RESET_ALL}")
+    print(f"\n{Fore.WHITE}Canal: {Fore.RED}{canal}")
+    print(f"{Fore.WHITE}Número de Bots: {Fore.RED}{num_bots}")
+    print(f"{Fore.WHITE}Limite de Anúncios: {Fore.RED}{limite_anuncios}{Style.RESET_ALL}")
     
     print(f"\n{Fore.YELLOW}Pressione ENTER para iniciar ou CTRL+C para cancelar...{Style.RESET_ALL}")
     input()
+
+def load_config() -> dict:
+    """
+    Carrega as configurações do arquivo config.json.
+    Se o arquivo não existir, cria com valores padrão.
+    
+    Returns:
+        dict: Configurações carregadas
+    """
+    config_path = Path("configs/config.json")
+    
+    # Cria o diretório configs se não existir
+    config_path.parent.mkdir(exist_ok=True)
+    
+    # Configurações padrão
+    default_config = {
+        "channels": [],
+        "bots": 5,
+        "ads_limit": 1000
+    }
+    
+    # Se o arquivo não existe, cria com configurações padrão
+    if not config_path.exists():
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(default_config, f, indent=4)
+        return default_config
+        
+    # Carrega configurações existentes
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Erro ao carregar configurações: {e}")
+        return default_config
+
+def save_config(config: dict):
+    """
+    Salva as configurações no arquivo config.json.
+    
+    Args:
+        config (dict): Configurações a serem salvas
+    """
+    config_path = Path("configs/config.json")
+    try:
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        logger.error(f"Erro ao salvar configurações: {e}")
+
+def add_channel_to_config(channel: str):
+    """
+    Adiciona um canal à lista de canais nas configurações.
+    
+    Args:
+        channel (str): Nome do canal a ser adicionado
+    """
+    config = load_config()
+    if channel not in config['channels']:
+        config['channels'].append(channel)
+        save_config(config)
+
+def exibir_menu_principal():
+    """Exibe o menu principal e retorna a opção selecionada."""
+    # Limpa a tela
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    # Calcula o padding para centralização
+    terminal_width = os.get_terminal_size().columns
+    padding = " " * ((terminal_width - 80) // 2)
+    
+    # Cabeçalho com título em negrito e branco
+    print(f"\n")
+    print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"\n")
+    print(f"{Fore.WHITE}[{Fore.RED}1{Fore.WHITE}] {Fore.WHITE}Iniciar{Style.RESET_ALL}")
+    print(f"{Fore.WHITE}[{Fore.RED}2{Fore.WHITE}] {Fore.WHITE}Alterar configurações{Style.RESET_ALL}")
+    print(f"\n")
+    
+    while True:
+        try:
+            opcao = input(f"{Fore.RED}Digite sua escolha: {Style.RESET_ALL}")
+            if opcao in ['1', '2']:
+                return int(opcao)
+            print(f"{Fore.RED}Opção inválida. Digite 1 ou 2.{Style.RESET_ALL}")
+        except ValueError:
+            print(f"{Fore.RED}Opção inválida. Digite 1 ou 2.{Style.RESET_ALL}")
 
 def main():
     global limite_anuncios_global
     
     try:
-        # Limpa a tela
-        os.system('cls' if os.name == 'nt' else 'clear')
+        # Carrega configurações
+        config = load_config()
         
-        # Calcula o padding para centralização
-        terminal_width = os.get_terminal_size().columns
-        padding = " " * ((terminal_width - 80) // 2)
-        
-        # Cabeçalho com título em negrito e branco
-        print(f"\n")
-        print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}                     ")
-        print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
-        print(f"{padding}                       Made by: {Fore.RED}Velbots{Style.RESET_ALL} │ Version: {Fore.RED}1.0.0{Style.RESET_ALL}          ")
-        print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
-        
-        # Obtém as configurações
-        canal_nome = obter_entrada_canal()
-        num_bots = obter_numero_bots()
-        limite_anuncios_global = obter_limite_anuncios()
-        
-        # Verifica se o canal está online
-        if not verificar_canal_online(canal_nome):
-            print(f"\n{Fore.RED}Erro: Canal offline ou não encontrado.{Style.RESET_ALL}")
-            return
+        while True:
+            opcao = exibir_menu_principal()
             
-        # Inicia thread do menu
-        menu_thread = threading.Thread(target=update_menu)
-        menu_thread.daemon = True
-        menu_thread.start()
-        
-        # Iniciar múltiplos bots em threads
-        with ThreadPoolExecutor(max_workers=num_bots) as executor:
-            futures = [executor.submit(bot_worker, canal_nome, bot_id) 
-                      for bot_id in range(1, num_bots + 1)]
-            
-            for future in futures:
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Erro em thread de bot: {str(e)}")
+            if opcao == 1:  # Iniciar
+                # Verifica se há canais salvos
+                if not config['channels']:
+                    print(f"\n{Fore.RED}Erro: Nenhum canal configurado. Configure um canal primeiro.{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
+                    continue
+                
+                # Usa o último canal adicionado
+                canal_nome = config['channels'][-1]
+                num_bots = config['bots']  # Usa valor salvo
+                limite_anuncios_global = config['ads_limit']  # Usa valor salvo
+                
+                # Verifica se o canal está online
+                if not verificar_canal_online(canal_nome):
+                    print(f"\n{Fore.RED}Erro: Canal offline ou não encontrado.{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
+                    continue
+                
+                # Inicia thread do menu
+                menu_thread = threading.Thread(target=update_menu)
+                menu_thread.daemon = True
+                menu_thread.start()
+                
+                # Iniciar múltiplos bots em threads
+                with ThreadPoolExecutor(max_workers=num_bots) as executor:
+                    futures = [executor.submit(bot_worker, canal_nome, bot_id) 
+                              for bot_id in range(1, num_bots + 1)]
+                    
+                    for future in futures:
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Erro em thread de bot: {str(e)}")
+                break
+                
+            else:  # Alterar configurações
+                # Limpa a tela
+                os.system('cls' if os.name == 'nt' else 'clear')
+                
+                # Calcula o padding para centralização
+                terminal_width = os.get_terminal_size().columns
+                padding = " " * ((terminal_width - 80) // 2)
+                
+                # Logo
+                print(f"\n")
+                print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
+                print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+                print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
+                print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+                
+                print(f"{Fore.RED}Configurações Atuais:{Style.RESET_ALL}")
+                print(f"\n{Fore.WHITE}[{Fore.RED}1{Fore.WHITE}] Número de Bots: {config['bots']}")
+                print(f"{Fore.WHITE}[{Fore.RED}2{Fore.WHITE}] Limite de Anúncios: {config['ads_limit']}")
+                print(f"{Fore.WHITE}[{Fore.RED}3{Fore.WHITE}] Gerenciar Canais")
+                print(f"{Fore.WHITE}[{Fore.RED}4{Fore.WHITE}] Voltar")
+                print(f"\nCanais Salvos:")
+                for i, canal in enumerate(config['channels'], 1):
+                    print(f"{i}. {canal}")
+                
+                while True:
+                    try:
+                        escolha = input(f"\n{Fore.RED}Digite sua escolha: {Style.RESET_ALL}")
+                        if escolha == '1':
+                            config['bots'] = obter_numero_bots()
+                            save_config(config)
+                            break
+                        elif escolha == '2':
+                            config['ads_limit'] = obter_limite_anuncios()
+                            save_config(config)
+                            break
+                        elif escolha == '3':
+                            canal_nome = obter_entrada_canal()
+                            add_channel_to_config(canal_nome)
+                            break
+                        elif escolha == '4':
+                            break
+                        else:
+                            print(f"{Fore.RED}Opção inválida. Digite 1, 2, 3 ou 4.{Style.RESET_ALL}")
+                    except ValueError:
+                        print(f"{Fore.RED}Opção inválida. Digite 1, 2, 3 ou 4.{Style.RESET_ALL}")
+                
+                input(f"\n{Fore.YELLOW}Configurações salvas! Pressione ENTER para continuar...{Style.RESET_ALL}")
 
     except KeyboardInterrupt:
         logger.info("Programa encerrado pelo usuário")
