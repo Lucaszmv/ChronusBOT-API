@@ -16,6 +16,17 @@ class TerminalMenu:
         self.events: List[Dict] = []
         self.max_events = 5
         
+    def get_center_padding(self) -> int:
+        """Calcula o padding necessário para centralizar o menu."""
+        terminal_width = os.get_terminal_size().columns
+        menu_width = 80  # Largura total do menu
+        return max(0, (terminal_width - menu_width) // 2)
+        
+    def centered_print(self, text: str):
+        """Imprime texto centralizado no terminal."""
+        padding = " " * self.get_center_padding()
+        print(f"{padding}{text}")
+
     def add_event(self, bot_id: int, message: str, event_type: str = 'info'):
         """Adiciona um novo evento à lista."""
         self.events.insert(0, {
@@ -66,23 +77,26 @@ class TerminalMenu:
         # Remove qualquer linha em branco no início
         print(end='', flush=True)
         
+        # Calcula o padding central
+        padding = " " * self.get_center_padding()
+        
         # Cabeçalho
-        print("  ╔═════════════════════════════════════════════════════════╗")
-        print("  ║               ChronusBOT-API - Twitch Stream Viewer     ║")
-        print("  ╚═════════════════════════════════════════════════════════╝")
+        print(f"{padding}         ╔═════════════════════════════════════════════════════════╗")
+        print(f"{padding}         ║               ChronusBOT-API - Twitch Stream Viewer     ║")
+        print(f"{padding}         ╚═════════════════════════════════════════════════════════╝")
         
         # Estatísticas Gerais
-        print("  ┌──────────┬───────────┬─────────┬─────────────┬─────────┬───────────┐")
-        print("  │ Channels │ Total     │ Total   │ Runtime     │ Proxies │ Total Ads │")
-        print("  │ Importes │ Completed │ Threads │ Elapsed     │ Loaded  │ Pre/Mid   │")
-        print("  ├──────────┼───────────┼─────────┼─────────────┼─────────┼───────────┤")
-        print(f"  │ {stats['channels']:<8} │ {stats['completed']:<9} │ {stats['threads']:<7} │ {self.get_runtime():<11} │ {stats['proxies']:<7} │ {stats['ads_per_hour']:<9} │")
-        print("  └──────────┴───────────┴─────────┴─────────────┴─────────┴───────────┘")
+        print(f"{padding}     ┌──────────┬───────────┬─────────┬─────────────┬─────────┬───────────┐")
+        print(f"{padding}     │ Channels │ Total     │ Total   │ Runtime     │ Proxies │ Total Ads │")
+        print(f"{padding}     │ Importes │ Completed │ Threads │ Elapsed     │ Loaded  │ Pre/Mid   │")
+        print(f"{padding}     ├──────────┼───────────┼─────────┼─────────────┼─────────┼───────────┤")
+        print(f"{padding}     │ {stats['channels']:<8} │ {stats['completed']:<9} │ {stats['threads']:<7} │ {self.get_runtime():<11} │ {stats['proxies']:<7} │ {stats['ads_per_hour']:<9} │")
+        print(f"{padding}     └──────────┴───────────┴─────────┴─────────────┴─────────┴───────────┘")
         
-        # Status dos Bots (ajustando para mostrar o IP do usuário)
-        print("  ┌──────┬──────────────┬──────────────┬──────────────────┬─────────┬─────────────┐")
-        print("  │ BOT  │ STATUS       │ CHANNEL      │ USER IP          │ PRE/MID │ UPTIME      │")
-        print("  ├──────┼──────────────┼──────────────┼──────────────────┼─────────┼─────────────┤")
+        # Status dos Bots
+        print(f"{padding}┌──────┬──────────────┬──────────────┬──────────────────┬─────────┬─────────────┐")
+        print(f"{padding}│ BOT  │ STATUS       │ CHANNEL      │ USER IP          │ PRE/MID │ UPTIME      │")
+        print(f"{padding}├──────┼──────────────┼──────────────┼──────────────────┼─────────┼─────────────┤")
         
         for bot in bot_status:
             status_color = self.get_status_color(bot['status'])
@@ -96,26 +110,23 @@ class TerminalMenu:
             else:
                 uptime = bot['uptime']
             
-            # Pega o IP do usuário e garante que não é None
             user_ip = bot.get('user_ip', 'Waiting IP...')
             if user_ip is None:
                 user_ip = 'Waiting IP...'
             
-            # Trunca o IP se for muito longo
             if len(user_ip) > 16:
                 user_ip = user_ip[:13] + '...'
                 
-            # Trunca o nome do canal se for muito longo
             channel = bot.get('channel', '')
             if len(channel) > 12:
                 channel = channel[:9] + '...'
             else:
                 channel = channel.ljust(12)
             
-            print(f"  │ {bot['id']:02d}   │ {status_color} {bot['status']:<10}{Style.RESET_ALL} │ {channel} │ {user_ip:<16} │ {bot['ads']:<7} │ {uptime:<11} │")
+            print(f"{padding}│ {bot['id']:02d}   │ {status_color} {bot['status']:<10}{Style.RESET_ALL} │ {channel} │ {user_ip:<16} │ {bot['ads']:<7} │ {uptime:<11} │")
             
-        print("  └──────┴──────────────┴──────────────┴──────────────────┴─────────┴─────────────┘")
-        
+        print(f"{padding}└──────┴──────────────┴──────────────┴──────────────────┴─────────┴─────────────┘")
+
 def create_terminal_menu() -> TerminalMenu:
     """Cria uma nova instância do menu do terminal."""
     return TerminalMenu() 
