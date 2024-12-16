@@ -54,6 +54,18 @@ anuncios_lock = Lock()
 # Adicione estas variáveis globais para cada bot
 bot_anuncios = {}  # Dicionário para armazenar contadores de cada bot
 
+def update_bot_ip(bot_id: int, ip: str):
+    """Atualiza o IP do bot nas estatísticas."""
+    with stats_lock:
+        for bot in bot_stats:
+            if bot['id'] == bot_id:
+                bot['proxy_ip'] = ip
+                logger.info("", extra={
+                    'bot_id': bot_id,
+                    'message': f"IP atualizado para: {ip}"
+                })
+                return
+
 def print_header():
     """Imprime o cabeçalho do programa."""
     pass  # Removido pois agora usamos o menu
@@ -114,8 +126,16 @@ def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
 
 def update_menu():
     """Thread para atualizar o menu periodicamente"""
+    monitor = get_bot_monitor()
+    
     while not should_stop.is_set():
         with stats_lock:
+            # Atualiza IPs dos bots
+            for bot in bot_stats:
+                bot_status = monitor.get_bot_status(bot['id'])
+                if bot_status.get('user_ip'):
+                    bot['user_ip'] = bot_status['user_ip']
+            
             # Calcula o total de pre/mid rolls de todos os bots
             total_preroll = sum(bot['preroll'] for bot in bot_anuncios.values())
             total_midroll = sum(bot['midroll'] for bot in bot_anuncios.values())
@@ -125,7 +145,7 @@ def update_menu():
                 'completed': f"{total_anuncios_global}/{limite_anuncios_global}",
                 'threads': len(bot_stats),
                 'proxies': len(ProxyManager().proxies),
-                'ads_per_hour': f"{total_preroll}/{total_midroll}"  # Total de todos os bots
+                'ads_per_hour': f"{total_preroll}/{total_midroll}"
             })
             
             menu.render(global_stats, bot_stats)
@@ -148,7 +168,8 @@ def bot_worker(canal_nome: str, bot_id: int):
             'channel': canal_nome,
             'ads': '0/0',  # Formato preroll/midroll
             'uptime': '0h 00m',
-            'start_time': datetime.now()
+            'start_time': datetime.now(),
+            'user_ip': 'Waiting IP...'  # Inicializa com Waiting IP...
         })
     
     def update_bot_status(status: str, ads: str = None):
@@ -159,8 +180,23 @@ def bot_worker(canal_nome: str, bot_id: int):
                     bot['status'] = status
                     if ads:
                         bot['ads'] = ads
+                    
+                    # Obtém status atual do monitor
+                    bot_status = monitor.get_bot_status(bot_id)
+                    if bot_status.get('user_ip'):
+                        bot['user_ip'] = bot_status['user_ip']
                     break
-    
+
+    def check_and_update_ip():
+        """Verifica e atualiza o IP periodicamente"""
+        with stats_lock:
+            bot_status = monitor.get_bot_status(bot_id)
+            if bot_status.get('user_ip'):
+                for bot in bot_stats:
+                    if bot['id'] == bot_id:
+                        bot['user_ip'] = bot_status['user_ip']
+                        break
+
     def add_bot_event(message: str, event_type: str = 'info'):
         """Adiciona um evento do bot ao menu"""
         menu.add_event(bot_id, message, event_type)
@@ -189,9 +225,7 @@ def bot_worker(canal_nome: str, bot_id: int):
     while not should_stop.is_set():
         try:
             update_bot_status('ONLINE')
-            add_bot_event("Bot iniciado", 'info')
-            
-            monitor.update_status(bot_id, BotStatus.INICIANDO)
+            check_and_update_ip()  # Verifica IP
             
             # Primeira configuração da sessão
             if not reiniciar_sessao("Iniciando bot"):
@@ -201,11 +235,9 @@ def bot_worker(canal_nome: str, bot_id: int):
             # Obtém token
             fingerprint = session_manager.get_fingerprint(bot_id)
             token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
-            if not token_data:
-                reiniciar_sessao("Falha ao obter token")
-                time.sleep(5)
-                continue
-                
+            if token_data:
+                check_and_update_ip()  # Verifica IP após obter token
+            
             # Loop principal de atualização
             while not should_stop.is_set():
                 try:

@@ -28,18 +28,15 @@ class BotMonitor:
     def update_status(self, bot_id: int, status: str, details: str = ""):
         """
         Atualiza o status de um bot.
-        
-        Args:
-            bot_id: ID do bot
-            status: Status principal (usar BotStatus)
-            details: Detalhes adicionais (opcional)
         """
         with self.lock:
-            # Inicializa start_time se for primeira vez
-            if bot_id not in self.bot_status:
-                start_time = datetime.now()
-            else:
+            # Preserva o user_ip se já existir
+            current_user_ip = None
+            if bot_id in self.bot_status:
+                current_user_ip = self.bot_status[bot_id].get('user_ip')
                 start_time = self.bot_status[bot_id].get('start_time', datetime.now())
+            else:
+                start_time = datetime.now()
             
             # Atualiza informações do bot
             self.bot_status[bot_id] = {
@@ -47,7 +44,8 @@ class BotMonitor:
                 'details': details,
                 'last_update': datetime.now(),
                 'start_time': start_time,
-                'uptime': self._get_uptime(bot_id)
+                'uptime': self._get_uptime(bot_id),
+                'user_ip': current_user_ip  # Mantém o IP atual
             }
             
             # Log da mudança de status
@@ -71,6 +69,34 @@ class BotMonitor:
         if hours > 0:
             return f"{hours}h {minutes}m"
         return f"{minutes}m"
+
+    def update_bot_ip(self, bot_id: int, ip: str):
+        """Atualiza o IP do bot nas estatísticas."""
+        with self.lock:
+            if bot_id not in self.bot_status:
+                self.bot_status[bot_id] = {
+                    'status': 'ONLINE',
+                    'details': '',
+                    'last_update': datetime.now(),
+                    'start_time': datetime.now(),
+                    'uptime': '0m'
+                }
+            
+            previous_ip = self.bot_status[bot_id].get('user_ip')
+            self.bot_status[bot_id]['user_ip'] = ip
+            
+            # Log da atualização do IP
+            logger.info("", extra={
+                'ip_update': True,
+                'bot_id': bot_id,
+                'previous_ip': previous_ip,
+                'new_ip': ip
+            })
+
+    def get_bot_status(self, bot_id: int) -> dict:
+        """Retorna o status completo de um bot."""
+        with self.lock:
+            return self.bot_status.get(bot_id, {})
 
 # Instância global do monitor
 bot_monitor = BotMonitor()

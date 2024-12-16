@@ -79,10 +79,10 @@ class TerminalMenu:
         print(f"  │ {stats['channels']:<8} │ {stats['completed']:<9} │ {stats['threads']:<7} │ {self.get_runtime():<11} │ {stats['proxies']:<7} │ {stats['ads_per_hour']:<9} │")
         print("  └──────────┴───────────┴─────────┴─────────────┴─────────┴───────────┘")
         
-        # Status dos Bots
-        print("  ┌──────────┬───────────┬───────────┬─────────┬─────────────┐")
-        print("  │ BOT      │ STATUS    │ CHANNEL   │ PRE/MID │ UPTIME      │")
-        print("  ├──────────┼───────────┼───────────┼─────────┼─────────────┤")
+        # Status dos Bots (ajustando para mostrar o IP do usuário)
+        print("  ┌──────────┬──────────────┬──────────────────┬─────────┬─────────────┐")
+        print("  │ BOT      │ STATUS       │ USER IP          │ PRE/MID │ UPTIME      │")
+        print("  ├──────────┼──────────────┼──────────────────┼─────────┼─────────────┤")
         
         for bot in bot_status:
             status_color = self.get_status_color(bot['status'])
@@ -96,9 +96,18 @@ class TerminalMenu:
             else:
                 uptime = bot['uptime']
             
-            print(f"  │ BOT {bot['id']:02d}   │ {status_color} {bot['status']:<7}{Style.RESET_ALL} │ {bot['channel']:<9} │ {bot['ads']:<7} │ {uptime:<11} │")
+            # Pega o IP do usuário e garante que não é None
+            user_ip = bot.get('user_ip', 'Waiting IP...')
+            if user_ip is None:
+                user_ip = 'Waiting IP...'
             
-        print("  └──────────┴───────────┴───────────┴─────────┴─────────────┘")
+            # Trunca o IP se for muito longo
+            if len(user_ip) > 23:
+                user_ip = user_ip[:20] + '...'
+            
+            print(f"  │ BOT {bot['id']:02d}   │ {status_color} {bot['status']:<10}{Style.RESET_ALL} │ {user_ip:<16} │ {bot['ads']:<7} │ {uptime:<11} │")
+            
+        print("  └──────────┴──────────────┴──────────────────┴─────────┴─────────────┘")
         
 def create_terminal_menu() -> TerminalMenu:
     """Cria uma nova instância do menu do terminal."""

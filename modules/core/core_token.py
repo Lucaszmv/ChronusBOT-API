@@ -94,25 +94,36 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: in
         session = get_session(bot_id)
         
         response = session.post(url, headers=headers, json=payload)
+        response_text = response.text
         
-        # Log detalhado da requisição
-        logger.info("", extra={
-            'request_details': {
-                'method': 'POST',
-                'url': url,
-                'headers_sent': headers,
-                'headers_received': dict(response.headers),
-                'status_code': response.status_code,
-                'reason': response.reason,
-                'response': response.text
-            }
-        })
-
+        logger.info(f"BOT {bot_id}: Token Response: {response_text[:500]}")  # Log primeiros 500 chars
+        
         response.raise_for_status()
         data = response.json()
         
         if 'data' in data and 'streamPlaybackAccessToken' in data['data']:
-            return data['data']['streamPlaybackAccessToken']
+            token_data = data['data']['streamPlaybackAccessToken']
+            
+            try:
+                token_value = json.loads(token_data['value'])
+                user_ip = token_value.get('user_ip')
+                
+                # Log detalhado do token e IP
+                logger.info("", extra={
+                    'token_response': json.dumps(token_value, indent=2),
+                    'user_ip': user_ip,
+                    'bot_id': bot_id
+                })
+                
+                if user_ip and bot_id:
+                    from modules.utils.utils_bot_monitor import get_bot_monitor
+                    monitor = get_bot_monitor()
+                    monitor.update_bot_ip(bot_id, user_ip)
+                
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Token parsing error: {str(e)}")
+            
+            return token_data
         else:
             logging.error("Falha ao obter token de acesso de reprodução")
             return None

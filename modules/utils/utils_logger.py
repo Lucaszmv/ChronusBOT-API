@@ -37,86 +37,31 @@ class FileFormatter(logging.Formatter):
     def __init__(self):
         super().__init__()
         self.fmt = (
-            "%(asctime)s | "
-            "%(levelname)-7s | "
-            "%(bot_id)s"
+            "[%(asctime)s] "
+            "%(levelname)-8s "
             "%(message)s"
         )
-        self.datefmt = '%H:%M:%S'
+        self.datefmt = '%Y-%m-%d %H:%M:%S'
 
     def format(self, record):
-        # Formata bot_id se existir
-        if not hasattr(record, 'bot_id'):
-            record.bot_id = ''
-        elif record.bot_id:
-            try:
-                bot_id = int(record.bot_id)
-                record.bot_id = f"BOT {bot_id:02d} | "
-            except (ValueError, TypeError):
-                record.bot_id = ''
-
-        # Formata detalhes técnicos
-        if hasattr(record, 'request_details'):
-            details = record.request_details
+        # Formata a mensagem com base no tipo de log
+        if hasattr(record, 'token_response'):
+            # Log específico para resposta do token
             record.msg = (
-                f"\n{'='*80}\n"
-                f"TOKEN REQUEST\n"
-                f"{'='*80}\n"
-                f"URL.........: {details.get('url')}\n"
-                f"Method......: {details.get('method')}\n"
-                f"\nHEADERS ENVIADOS:\n{self._format_dict(details.get('headers_sent', {}))}\n"
-                f"\nHEADERS RECEBIDOS:\n{self._format_dict(details.get('headers_received', {}))}\n"
-                f"\nRESPONSE:\n"
-                f"Status......: {details.get('status_code')} {details.get('reason')}\n"
-                f"Body........: {details.get('response', '')[:200]}...\n"
-                f"{'='*80}\n"
+                f"\nTOKEN RESPONSE - BOT {record.bot_id}:\n"
+                f"Response: {record.token_response}\n"
+                f"Extracted IP: {record.user_ip}\n"
+                f"{'='*80}"
             )
-        elif hasattr(record, 'playlist_details'):
-            details = record.playlist_details
+        elif hasattr(record, 'ip_update'):
+            # Log específico para atualização de IP
             record.msg = (
-                f"\n{'='*80}\n"
-                f"PLAYLIST REQUEST\n"
-                f"{'='*80}\n"
-                f"URL.........: {details.get('url')}\n"
-                f"Method......: {details.get('method')}\n"
-                f"\nHEADERS ENVIADOS:\n{self._format_dict(details.get('headers_sent', {}))}\n"
-                f"\nHEADERS RECEBIDOS:\n{self._format_dict(details.get('headers_received', {}))}\n"
-                f"\nRESPONSE:\n"
-                f"Status......: {details.get('status_code')} {details.get('reason')}\n"
-                f"Playlist....: \n{self._format_m3u8(details.get('response', ''))}\n"
-                f"{'='*80}\n"
+                f"BOT {record.bot_id}: "
+                f"IP Update - Previous: {record.previous_ip}, "
+                f"New: {record.new_ip}"
             )
-        elif hasattr(record, 'session_details'):
-            details = record.session_details
-            record.msg = (
-                f"\n{'='*80}\n"
-                f"NOVA SESSÃO INICIADA\n"
-                f"{'='*80}\n"
-                f"Bot ID......: {details.get('bot_id')}\n"
-                f"Proxy.......: {details.get('proxy')}\n"
-                f"User-Agent..: {details.get('user_agent')}\n"
-                f"Client-ID...: {details.get('client_id')}\n"
-                f"{'='*80}\n"
-            )
-
-        # Formata a mensagem final
-        self._style._fmt = self.fmt
-        formatted_msg = super().format(record) if record.msg else ""
-        return formatted_msg.strip() or ""
-
-    def _format_dict(self, d, indent=2):
-        """Formata dicionário de forma legível"""
-        return '\n'.join(f"{' '*indent}{k:<30}: {v}" for k, v in d.items())
-
-    def _format_m3u8(self, content, max_lines=10):
-        """Formata conteúdo M3U8 de forma legível"""
-        if not content:
-            return "Vazio"
-        lines = content.split('\n')
-        formatted = '\n'.join(f"    {line}" for line in lines[:max_lines])
-        if len(lines) > max_lines:
-            formatted += f"\n    ... (+{len(lines) - max_lines} linhas)"
-        return formatted
+        
+        return super().format(record)
 
 class ConsoleFormatter(logging.Formatter):
     """Mantém o formato original para console com cores."""
@@ -173,62 +118,42 @@ class LoggerManager:
 
     def setup_logging(self):
         """Configura o sistema de logging."""
-        # Configura o logger raiz para não mostrar nada no console
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.CRITICAL)
-        
-        # Remove todos os handlers existentes
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-        
         # Cria pasta da sessão
-        base_log_dir = Path(__file__).parent.parent.parent / 'logs'
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        session_dir = base_log_dir / f'session_{timestamp}'
-        session_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = Path(__file__).parent.parent.parent / 'logs' / f'session_{timestamp}'
+        log_dir.mkdir(parents=True, exist_ok=True)
         
-        # Handler para arquivo (mantém logs normalmente)
-        session_log = session_dir / 'session.log'
-        session_handler = logging.handlers.RotatingFileHandler(
-            session_log,
-            maxBytes=10*1024*1024,
-            backupCount=5,
+        # Arquivo de sessão
+        session_handler = logging.FileHandler(
+            log_dir / 'session.log',
+            mode='a',
             encoding='utf-8'
         )
         session_handler.setFormatter(FileFormatter())
         session_handler.setLevel(logging.INFO)
         
-        # Handler para proxy (mantém logs normalmente)
-        proxy_log = session_dir / 'proxy.log'
-        proxy_handler = logging.handlers.RotatingFileHandler(
-            proxy_log,
-            maxBytes=10*1024*1024,
-            backupCount=5,
+        # Arquivo de proxy
+        proxy_handler = logging.FileHandler(
+            log_dir / 'proxy.log',
+            mode='a',
             encoding='utf-8'
         )
-        proxy_handler.setFormatter(ProxyFormatter())
+        proxy_handler.setFormatter(FileFormatter())
         proxy_handler.setLevel(logging.INFO)
         
-        # Não adiciona console handler
+        # Configura logger raiz
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
         
-        # Configura filtros
-        proxy_handler.addFilter(ProxyFilter())
-        session_handler.addFilter(SessionFilter())
+        # Remove handlers existentes
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
         
-        # Adiciona apenas os handlers de arquivo
+        # Adiciona os novos handlers
         root_logger.addHandler(session_handler)
         root_logger.addHandler(proxy_handler)
         
-        # Configura todos os loggers existentes para não mostrarem nada no console
-        for name in logging.root.manager.loggerDict:
-            logger = logging.getLogger(name)
-            logger.setLevel(logging.CRITICAL)
-            # Remove qualquer console handler existente
-            for handler in logger.handlers[:]:
-                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                    logger.removeHandler(handler)
-        
-        self.session_dir = session_dir
+        return log_dir
 
 def get_logger(name: str) -> logging.Logger:
     """Obtém um logger configurado."""
