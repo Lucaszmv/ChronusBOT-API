@@ -80,23 +80,25 @@ class TerminalMenu:
         # Calcula o padding central
         padding = " " * self.get_center_padding()
         
-        # Cabeçalho
-        print(f"{padding}         ╔═════════════════════════════════════════════════════════╗")
-        print(f"{padding}         ║               ChronusBOT-API - Twitch Stream Viewer     ║")
-        print(f"{padding}         ╚═════════════════════════════════════════════════════════╝")
+        # Cabeçalho com título em negrito e branco
+        print(f"\n")
+        print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}                     ")
+        print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+        print(f"{padding}                       Made by: {Fore.RED}Velbots{Style.RESET_ALL} │ Version: {Fore.RED}1.0.0{Style.RESET_ALL}          ")
+        print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
         
         # Estatísticas Gerais
-        print(f"{padding}     ┌──────────┬───────────┬─────────┬─────────────┬─────────┬───────────┐")
-        print(f"{padding}     │ Channels │ Total     │ Total   │ Runtime     │ Proxies │ Total Ads │")
-        print(f"{padding}     │ Importes │ Completed │ Threads │ Elapsed     │ Loaded  │ Pre/Mid   │")
-        print(f"{padding}     ├──────────┼───────────┼─────────┼─────────────┼─────────┼───────────┤")
-        print(f"{padding}     │ {stats['channels']:<8} │ {stats['completed']:<9} │ {stats['threads']:<7} │ {self.get_runtime():<11} │ {stats['proxies']:<7} │ {stats['ads_per_hour']:<9} │")
-        print(f"{padding}     └──────────┴───────────┴─────────┴─────────────┴─────────┴───────────┘")
+        print(f"{padding}     {Fore.RED}┌──────────┬───────────┬─────────┬─────────────┬─────────┬───────────┐{Style.RESET_ALL}")
+        print(f"{padding}     {Fore.RED}│{Style.RESET_ALL} Channels {Fore.RED}│{Style.RESET_ALL} Total     {Fore.RED}│{Style.RESET_ALL} Total   {Fore.RED}│{Style.RESET_ALL} Runtime     {Fore.RED}│{Style.RESET_ALL} Proxies {Fore.RED}│{Style.RESET_ALL} Total Ads {Fore.RED}│{Style.RESET_ALL}")
+        print(f"{padding}     {Fore.RED}│{Style.RESET_ALL} Importes {Fore.RED}│{Style.RESET_ALL} Completed {Fore.RED}│{Style.RESET_ALL} Threads {Fore.RED}│{Style.RESET_ALL} Elapsed     {Fore.RED}│{Style.RESET_ALL} Loaded  {Fore.RED}│{Style.RESET_ALL} Pre/Mid   {Fore.RED}│{Style.RESET_ALL}")
+        print(f"{padding}     {Fore.RED}├──────────┼───────────┼─────────┼─────────────┼─────────┼───────────┤{Style.RESET_ALL}")
+        print(f"{padding}     {Fore.RED}│{Style.RESET_ALL} {stats['channels']:<8} {Fore.RED}│{Style.RESET_ALL} {stats['completed']:<9} {Fore.RED}│{Style.RESET_ALL} {stats['threads']:<7} {Fore.RED}│{Style.RESET_ALL} {self.get_runtime():<11} {Fore.RED}│{Style.RESET_ALL} {stats['proxies']:<7} {Fore.RED}│{Style.RESET_ALL} {stats['ads_per_hour']:<9} {Fore.RED}│{Style.RESET_ALL}")
+        print(f"{padding}     {Fore.RED}└──────────┴───────────┴─────────┴─────────────┴─────────┴───────────┘{Style.RESET_ALL}")
         
         # Status dos Bots
-        print(f"{padding}┌──────┬──────────────┬──────────────┬──────────────────┬─────────┬─────────────┐")
-        print(f"{padding}│ BOT  │ STATUS       │ CHANNEL      │ USER IP          │ PRE/MID │ UPTIME      │")
-        print(f"{padding}├──────┼──────────────┼──────────────┼──────────────────┼─────────┼─────────────┤")
+        print(f"{padding}{Fore.RED}┌──────┬──────────────┬──────────────┬──────────────────┬─────────┬─────────────┐{Style.RESET_ALL}")
+        print(f"{padding}{Fore.RED}│{Style.RESET_ALL} BOT  {Fore.RED}│{Style.RESET_ALL} STATUS       {Fore.RED}│{Style.RESET_ALL} CHANNEL      {Fore.RED}│{Style.RESET_ALL} USER IP          {Fore.RED}│{Style.RESET_ALL} PRE/MID {Fore.RED}│{Style.RESET_ALL} UPTIME      {Fore.RED}│{Style.RESET_ALL}")
+        print(f"{padding}{Fore.RED}├──────┼──────────────┼──────────────┼──────────────────┼─────────┼─────────────┤{Style.RESET_ALL}")
         
         for bot in bot_status:
             status_color = self.get_status_color(bot['status'])
@@ -123,9 +125,9 @@ class TerminalMenu:
             else:
                 channel = channel.ljust(12)
             
-            print(f"{padding}│ {bot['id']:02d}   │ {status_color} {bot['status']:<10}{Style.RESET_ALL} │ {channel} │ {user_ip:<16} │ {bot['ads']:<7} │ {uptime:<11} │")
+            print(f"{padding}{Fore.RED}│{Style.RESET_ALL} {bot['id']:02d}   {Fore.RED}│{Style.RESET_ALL} {status_color} {bot['status']:<10}{Style.RESET_ALL} {Fore.RED}│{Style.RESET_ALL} {channel} {Fore.RED}│{Style.RESET_ALL} {user_ip:<16} {Fore.RED}│{Style.RESET_ALL} {bot['ads']:<7} {Fore.RED}│{Style.RESET_ALL} {uptime:<11} {Fore.RED}│{Style.RESET_ALL}")
             
-        print(f"{padding}└──────┴──────────────┴──────────────┴──────────────────┴─────────┴─────────────┘")
+        print(f"{padding}{Fore.RED}└──────┴──────────────┴──────────────┴──────────────────┴─────────┴─────────────┘{Style.RESET_ALL}")
 
 def create_terminal_menu() -> TerminalMenu:
     """Cria uma nova instância do menu do terminal."""
