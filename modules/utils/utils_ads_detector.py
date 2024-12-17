@@ -73,12 +73,6 @@ class AdDetector:
     def process_playlist(self, playlist_content: str):
         """
         Processa o conteúdo de uma playlist M3U8 para detectar anúncios.
-
-        Analisa cada linha da playlist procurando por marcadores de anúncios,
-        descontinuidades e segmentos, atualizando o estado interno do detector.
-
-        Args:
-            playlist_content (str): Conteúdo da playlist M3U8 a ser processada.
         """
         lines = playlist_content.split('\n')
         for i, line in enumerate(lines):
@@ -103,7 +97,7 @@ class AdDetector:
                     for j in range(i + 1, min(i + 6, len(lines))):
                         if lines[j].startswith('#EXT-X-TWITCH-LIVE-SEQUENCE'):
                             logger.debug("Sequência ao vivo detectada após anúncio")
-                            self.check_ad_completion()
+                            return self.check_ad_completion()
                             break
             
             elif not line.startswith('#') and line.strip():
@@ -113,6 +107,7 @@ class AdDetector:
                     logger.debug(f"Segmento de anúncio adicionado: {line.strip()}")
 
         logger.debug(f"Processamento da playlist concluído. In ad break: {self.in_ad_break}")
+        return False
 
     def generate_ad_pod_signature(self, ad_info: Dict[str, str]) -> str:
         """
@@ -149,6 +144,7 @@ class AdDetector:
         logger.debug(f"Anúncio adicional detectado no pod atual. Total: {self.current_pod_ad_count}")
 
     def check_ad_completion(self):
+        """Verifica e processa a conclusão de um pod de anúncios."""
         if self.in_ad_break:
             self.in_ad_break = False
             self.total_ad_pods_viewed += 1
@@ -160,9 +156,12 @@ class AdDetector:
             # Determina se é preroll ou midroll
             is_preroll = self.current_pod_info.get('X-TV-TWITCH-AD-ROLL-TYPE', '').lower() == 'preroll'
             
-            # Chama o callback com o tipo correto de anúncio
+            # Chama o callback com o tipo correto de anúncio e retorna seu resultado
             if self.check_limit_callback:
-                self.check_limit_callback(pod_length, is_preroll, self.bot_id)
+                callback_result = self.check_limit_callback(pod_length, is_preroll, self.bot_id)
+                # Se o callback retornar 2 (mudança de canal) ou True (parar), propaga o retorno
+                if callback_result == 2 or callback_result is True:
+                    return callback_result
             
             self.print_ad_viewed_success(self.last_segment)
             self.ad_start_time = None
@@ -173,7 +172,9 @@ class AdDetector:
             # Verifica limite local se não houver callback
             if self.max_total_ads and self.total_ads_viewed >= self.max_total_ads:
                 self.print_limit_reached()
-                sys.exit(0)
+                return True
+            
+        return False
 
     def parse_ad_info(self, line: str) -> Dict[str, str]:
         ad_info = {}

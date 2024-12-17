@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 import questionary
 from questionary import Style as QuestionaryStyle
+from typing import Optional
 
 # Inicializa o Colorama
 init()
@@ -57,6 +58,10 @@ anuncios_lock = Lock()
 
 # Adicione estas variáveis globais para cada bot
 bot_anuncios = {}  # Dicionário para armazenar contadores de cada bot
+
+# Adicione estas variáveis globais no início do arquivo, após as importações existentes
+current_channel_index = 0
+channels_list = []
 
 # Defina o estilo personalizado
 custom_style = QuestionaryStyle([
@@ -112,6 +117,28 @@ def log_request_details(method, url, headers_sent, response):
         }
     })
 
+def get_next_channel() -> Optional[str]:
+    """
+    Obtém o próximo canal da lista de canais.
+    
+    Returns:
+        Optional[str]: Próximo canal ou None se não houver mais canais
+    """
+    global current_channel_index, channels_list
+    
+    # Carrega a lista de canais se estiver vazia
+    if not channels_list:
+        config = load_config()
+        channels_list = [canal for canal in config['channels'] if canal and isinstance(canal, str)]
+    
+    # Verifica se há mais canais disponíveis
+    if current_channel_index < len(channels_list):
+        canal = channels_list[current_channel_index]
+        current_channel_index += 1
+        return canal
+    
+    return None
+
 def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
     """Verifica se o limite global de anúncios foi atingido e atualiza contadores por bot."""
     global total_anuncios_global, limite_anuncios_global
@@ -137,8 +164,23 @@ def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
                 break
         
         if total_anuncios_global >= limite_anuncios_global:
-            should_stop.set()
-            return True
+            # Tenta obter próximo canal
+            next_channel = get_next_channel()
+            if next_channel:
+                # Reseta contadores globais
+                total_anuncios_global = 0
+                # Limpa contadores por bot
+                bot_anuncios.clear()
+                # Atualiza canal atual para todos os bots
+                for bot in bot_stats:
+                    bot['channel'] = next_channel
+                    bot['ads'] = '0/0'
+                
+                # Retorna 2 para indicar mudança de canal
+                return 2
+            else:
+                should_stop.set()
+                return True
     return False
 
 def update_menu():
@@ -157,8 +199,12 @@ def update_menu():
             total_preroll = sum(bot['preroll'] for bot in bot_anuncios.values())
             total_midroll = sum(bot['midroll'] for bot in bot_anuncios.values())
             
+            # Carrega a configuração para obter o número total de canais
+            config = load_config()
+            total_channels = len([canal for canal in config['channels'] if canal and isinstance(canal, str)])
+            
             global_stats.update({
-                'channels': 1,
+                'channels': total_channels,  # Atualizado para mostrar o número total de canais
                 'completed': f"{total_anuncios_global}/{limite_anuncios_global}",
                 'threads': len(bot_stats),
                 'proxies': len(ProxyManager().proxies),
@@ -173,6 +219,7 @@ def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
     monitor = get_bot_monitor()
     failure_mgr = get_failure_manager()
+    erros_consecutivos = 0
     
     # Inicializa contadores para este bot
     bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
@@ -183,10 +230,10 @@ def bot_worker(canal_nome: str, bot_id: int):
             'id': bot_id,
             'status': 'ONLINE',
             'channel': canal_nome,
-            'ads': '0/0',  # Formato preroll/midroll
+            'ads': '0/0',
             'uptime': '0h 00m',
             'start_time': datetime.now(),
-            'user_ip': 'Waiting IP...'  # Inicializa com Waiting IP...
+            'user_ip': 'Waiting IP...'
         })
     
     def update_bot_status(status: str, ads: str = None):
@@ -241,8 +288,20 @@ def bot_worker(canal_nome: str, bot_id: int):
 
     while not should_stop.is_set():
         try:
+            # Obtém o canal atual do bot
+            current_channel = None
+            with stats_lock:
+                for bot in bot_stats:
+                    if bot['id'] == bot_id:
+                        current_channel = bot['channel']
+                        break
+            
+            if not current_channel:
+                time.sleep(5)
+                continue
+
             update_bot_status('ONLINE')
-            check_and_update_ip()  # Verifica IP
+            check_and_update_ip()
             
             # Primeira configuração da sessão
             if not reiniciar_sessao("Iniciando bot"):
@@ -251,30 +310,47 @@ def bot_worker(canal_nome: str, bot_id: int):
                 
             # Obtém token
             fingerprint = session_manager.get_fingerprint(bot_id)
-            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+            token_data = None
+            max_token_tentativas = 3
+            token_tentativas = 0
+            
+            while token_data is None and token_tentativas < max_token_tentativas:
+                token_data = obter_playback_access_token(current_channel, fingerprint, bot_id)
+                if not token_data:
+                    token_tentativas += 1
+                    time.sleep(2)
+            
+            if not token_data:
+                logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
+                continue
+                
             if token_data:
-                check_and_update_ip()  # Verifica IP após obter token
+                check_and_update_ip()
             
             # Loop principal de atualização
             while not should_stop.is_set():
                 try:
-                    monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
+                    monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {current_channel}")
                     
-                    resultado = atualizar_playlist(canal_nome, token_data, bot_id,
+                    resultado = atualizar_playlist(current_channel, token_data, bot_id,
                                                  limite_anuncios=None,
                                                  check_limit_callback=check_anuncios_limit)
                     
-                    if resultado is False:  # Se retornou False, precisa reiniciar sessão
+                    if resultado == 2:  # Mudança de canal
+                        update_bot_status('RECONECT')
+                        add_bot_event("Mudando de canal", 'warning')
+                        session_manager.close_session(bot_id)  # Força fechamento da sessão atual
+                        break  # Sai do loop interno para reiniciar com novo canal
+                    elif resultado is False:
                         update_bot_status('RECONECT')
                         add_bot_event("Reiniciando sessão", 'warning')
                         reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
                         break
-                    elif resultado is None:  # Se retornou None, teve erro
+                    elif resultado is None:
                         erros_consecutivos += 1
                         time.sleep(2)
                         continue
                     
-                    # Sucesso - reseta contadores
                     erros_consecutivos = 0
                     ultima_atualizacao = time.time()
                     failure_mgr.register_success(bot_id)
@@ -454,7 +530,7 @@ def exibir_menu_principal():
     # Cabeçalho com título em negrito e branco
     print(f"\n")
     print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
-    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}───────────────────────────────────────────{Style.RESET_ALL}")
     print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
     print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"\n")
@@ -482,7 +558,7 @@ def mostrar_cabecalho():
     padding = " " * ((terminal_width - 80) // 2)
     print(f"\n")
     print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
-    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────���───────────────────────{Style.RESET_ALL}")
     print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
     print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"\n")

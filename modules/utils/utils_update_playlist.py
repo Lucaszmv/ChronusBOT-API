@@ -216,22 +216,19 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                 if fila_vazia_inicio is None:
                     fila_vazia_inicio = time.time()
                 elif time.time() - fila_vazia_inicio > TEMPO_MAXIMO_FILA_VAZIA:
-                    # Sistema de retry antes de trocar sessão
                     if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:
                         tentativas_recuperacao += 1
                         if tentar_recuperar_playlist():
-                            fila_vazia_inicio = None  # Reseta contador
-                            tentativas_recuperacao = 0  # Reseta tentativas
+                            fila_vazia_inicio = None
+                            tentativas_recuperacao = 0
                             continue
                         else:
-                            time.sleep(2)  # Pequeno delay entre tentativas
+                            time.sleep(2)
                             continue
-                    
-                    # Se todas as tentativas falharam, solicita troca de sessão
                     return False
             else:
                 fila_vazia_inicio = None
-                tentativas_recuperacao = 0  # Reseta contador de tentativas quando a fila tem itens
+                tentativas_recuperacao = 0
 
             # Adquire permissão para atualizar playlist
             if not rate_limiter.acquire(bot_id, 'playlist'):
@@ -244,7 +241,13 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                 continue
 
             # Processar playlist para detectar anúncios
-            ad_detector.process_playlist(playlist_qualidade)
+            ad_result = ad_detector.process_playlist(playlist_qualidade)
+            
+            # Se o detector indicar mudança de canal, propaga o retorno
+            if isinstance(ad_result, int) and ad_result == 2:
+                return 2
+            elif ad_result is True:
+                return True
             
             novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
             if not novos_segmentos:
