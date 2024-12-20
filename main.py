@@ -304,8 +304,8 @@ def update_menu():
             total_channels = len([canal for canal in config['channels'] if canal and isinstance(canal, str)])
             
             global_stats.update({
-                'channels': total_channels,
-                'completed': f"{current_channel_index}/{total_channels}",
+                'channels': total_channels,  # Total de canais configurados
+                'completed': f"{total_anuncios_global}/{limite_anuncios_global}",  # Total de anúncios assistidos/limite
                 'threads': len(bot_stats),
                 'proxies': len(ProxyManager().proxies),
                 'ads_per_hour': f"{total_preroll}/{total_midroll}"
