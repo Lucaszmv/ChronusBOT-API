@@ -148,6 +148,14 @@ def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
         if bot_id not in bot_anuncios:
             bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
         
+        # Calcula o total após adicionar os novos anúncios
+        novo_total = total_anuncios_global + ads_viewed
+        
+        # Se o novo total ultrapassaria o limite, não incrementa e força mudança de canal
+        if novo_total > limite_anuncios_global:
+            logger.info(f"Limite de {limite_anuncios_global} anúncios atingido. Iniciando mudança sincronizada de canal.")
+            return check_and_change_channel()
+            
         # Atualiza contadores do bot específico
         if is_preroll:
             bot_anuncios[bot_id]['preroll'] += ads_viewed
@@ -155,7 +163,7 @@ def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
             bot_anuncios[bot_id]['midroll'] += ads_viewed
             
         # Atualiza total global
-        total_anuncios_global += ads_viewed
+        total_anuncios_global = novo_total
         
         # Atualiza o status do bot com seus próprios valores
         for bot in bot_stats:
@@ -163,25 +171,116 @@ def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
                 bot['ads'] = f"{bot_anuncios[bot_id]['preroll']}/{bot_anuncios[bot_id]['midroll']}"
                 break
         
-        if total_anuncios_global >= limite_anuncios_global:
-            # Tenta obter próximo canal
-            next_channel = get_next_channel()
-            if next_channel:
-                # Reseta contadores globais
-                total_anuncios_global = 0
-                # Limpa contadores por bot
-                bot_anuncios.clear()
-                # Atualiza canal atual para todos os bots
-                for bot in bot_stats:
-                    bot['channel'] = next_channel
-                    bot['ads'] = '0/0'
-                
-                # Retorna 2 para indicar mudança de canal
-                return 2
-            else:
-                should_stop.set()
-                return True
+        # Se atingiu exatamente o limite, inicia mudança de canal
+        if total_anuncios_global == limite_anuncios_global:
+            logger.info(f"Limite exato de {limite_anuncios_global} anúncios atingido. Iniciando mudança sincronizada de canal.")
+            return check_and_change_channel()
+            
     return False
+
+def check_and_change_channel():
+    """Função auxiliar para gerenciar a mudança sincronizada de canal."""
+    # Tenta obter próximo canal
+    next_channel = get_next_channel()
+    if next_channel:
+        logger.info(f"Mudando todos os bots para o canal: {next_channel}")
+        
+        # Reseta contadores globais
+        global total_anuncios_global
+        total_anuncios_global = 0
+        
+        # Limpa contadores por bot
+        bot_anuncios.clear()
+        
+        # Lista para armazenar resultados das operações de token
+        token_results = []
+        
+        # Primeiro, fecha todas as sessões antigas e reseta status
+        with stats_lock:
+            for bot in bot_stats:
+                session_manager.close_session(bot['id'])
+                bot['status'] = 'RECONECT'
+                bot['channel'] = next_channel
+                bot['ads'] = '0/0'
+                bot['user_ip'] = 'Waiting IP...'
+        
+        # Força atualização do menu para mostrar Waiting IP...
+        time.sleep(0.5)
+        
+        # Depois, cria novas sessões e obtém tokens em paralelo
+        with ThreadPoolExecutor(max_workers=len(bot_stats)) as executor:
+            futures = []
+            
+            for bot in bot_stats:
+                future = executor.submit(setup_new_session, bot['id'], next_channel)
+                futures.append((bot['id'], future))
+            
+            # Aguarda todas as operações completarem
+            for bot_id, future in futures:
+                try:
+                    success = future.result(timeout=10)
+                    token_results.append(success)
+                    if not success:
+                        with stats_lock:
+                            for bot in bot_stats:
+                                if bot['id'] == bot_id:
+                                    bot['status'] = 'RECONECT'
+                                    bot['user_ip'] = 'Waiting IP...'
+                                    break
+                except Exception as e:
+                    logger.error(f"BOT {bot_id}: Erro ao configurar nova sessão: {str(e)}")
+                    token_results.append(False)
+                    with stats_lock:
+                        for bot in bot_stats:
+                            if bot['id'] == bot_id:
+                                bot['status'] = 'RECONECT'
+                                bot['user_ip'] = 'Waiting IP...'
+                                break
+        
+        # Verifica se todas as operações foram bem-sucedidas
+        if all(token_results):
+            logger.info("Mudança de canal concluída com sucesso para todos os bots")
+        else:
+            logger.warning("Alguns bots podem ter falhado na mudança de canal")
+            # Força reconexão dos bots que falharam
+            for bot in bot_stats:
+                if bot['status'] == 'RECONECT':
+                    session_manager.close_session(bot['id'])
+                    bot['user_ip'] = 'Waiting IP...'
+        
+        return 2
+    else:
+        logger.info("Não há mais canais para processar. Encerrando...")
+        should_stop.set()
+        return True
+
+def setup_new_session(bot_id: int, channel: str) -> bool:
+    """Configura nova sessão e token para um bot."""
+    try:
+        # Obtém nova sessão com novo fingerprint e proxy
+        session = session_manager.get_session(bot_id)
+        fingerprint = session_manager.get_fingerprint(bot_id)
+        
+        # Obtém novo token para o novo canal
+        token_data = obter_playback_access_token(channel, fingerprint, bot_id)
+        if token_data:
+            logger.info(f"BOT {bot_id}: Novo token obtido para canal {channel}")
+            
+            # Atualiza o status e IP somente após obter o token com sucesso
+            with stats_lock:
+                for bot in bot_stats:
+                    if bot['id'] == bot_id:
+                        bot['status'] = 'ONLINE'
+                        # O IP será atualizado automaticamente pela função update_menu
+                        # quando a conexão estiver estabelecida
+                        break
+            return True
+        else:
+            logger.error(f"BOT {bot_id}: Falha ao obter token para canal {channel}")
+            return False
+    except Exception as e:
+        logger.error(f"BOT {bot_id}: Erro ao configurar nova sessão: {str(e)}")
+        return False
 
 def update_menu():
     """Thread para atualizar o menu periodicamente"""
@@ -189,23 +288,24 @@ def update_menu():
     
     while not should_stop.is_set():
         with stats_lock:
-            # Atualiza IPs dos bots
+            # Atualiza IPs dos bots apenas se não estiverem em RECONECT
             for bot in bot_stats:
-                bot_status = monitor.get_bot_status(bot['id'])
-                if bot_status.get('user_ip'):
-                    bot['user_ip'] = bot_status['user_ip']
+                if bot['status'] != 'RECONECT':
+                    bot_status = monitor.get_bot_status(bot['id'])
+                    if bot_status.get('user_ip'):
+                        bot['user_ip'] = bot_status['user_ip']
             
             # Calcula o total de pre/mid rolls de todos os bots
-            total_preroll = sum(bot['preroll'] for bot in bot_anuncios.values())
-            total_midroll = sum(bot['midroll'] for bot in bot_anuncios.values())
+            total_preroll = sum(bot_anuncios[bot_id]['preroll'] for bot_id in bot_anuncios)
+            total_midroll = sum(bot_anuncios[bot_id]['midroll'] for bot_id in bot_anuncios)
             
-            # Carrega a configuração para obter o número total de canais
+            # Atualiza estatísticas globais
             config = load_config()
             total_channels = len([canal for canal in config['channels'] if canal and isinstance(canal, str)])
             
             global_stats.update({
-                'channels': total_channels,  # Atualizado para mostrar o número total de canais
-                'completed': f"{total_anuncios_global}/{limite_anuncios_global}",
+                'channels': total_channels,
+                'completed': f"{current_channel_index}/{total_channels}",
                 'threads': len(bot_stats),
                 'proxies': len(ProxyManager().proxies),
                 'ads_per_hour': f"{total_preroll}/{total_midroll}"
@@ -244,11 +344,6 @@ def bot_worker(canal_nome: str, bot_id: int):
                     bot['status'] = status
                     if ads:
                         bot['ads'] = ads
-                    
-                    # Obtém status atual do monitor
-                    bot_status = monitor.get_bot_status(bot_id)
-                    if bot_status.get('user_ip'):
-                        bot['user_ip'] = bot_status['user_ip']
                     break
 
     def check_and_update_ip():
@@ -301,7 +396,6 @@ def bot_worker(canal_nome: str, bot_id: int):
                 continue
 
             update_bot_status('ONLINE')
-            check_and_update_ip()
             
             # Primeira configuração da sessão
             if not reiniciar_sessao("Iniciando bot"):
@@ -323,9 +417,6 @@ def bot_worker(canal_nome: str, bot_id: int):
             if not token_data:
                 logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
                 continue
-                
-            if token_data:
-                check_and_update_ip()
             
             # Loop principal de atualização
             while not should_stop.is_set():
@@ -341,19 +432,14 @@ def bot_worker(canal_nome: str, bot_id: int):
                         add_bot_event("Mudando de canal", 'warning')
                         session_manager.close_session(bot_id)  # Força fechamento da sessão atual
                         break  # Sai do loop interno para reiniciar com novo canal
+                    elif resultado is True:  # Finalização
+                        should_stop.set()
+                        break
                     elif resultado is False:
                         update_bot_status('RECONECT')
                         add_bot_event("Reiniciando sessão", 'warning')
                         reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
                         break
-                    elif resultado is None:
-                        erros_consecutivos += 1
-                        time.sleep(2)
-                        continue
-                    
-                    erros_consecutivos = 0
-                    ultima_atualizacao = time.time()
-                    failure_mgr.register_success(bot_id)
                     
                     time.sleep(1)
                     
@@ -558,7 +644,7 @@ def mostrar_cabecalho():
     padding = " " * ((terminal_width - 80) // 2)
     print(f"\n")
     print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
-    print(f"{padding}                  {Fore.RED}─────────────────────���───────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}──────────────────��──────────────────────────{Style.RESET_ALL}")
     print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
     print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"\n")
