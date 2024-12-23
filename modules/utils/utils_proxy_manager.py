@@ -142,6 +142,12 @@ class ProxyManager:
                 self.used_proxies.remove(proxy)
                 logger.info(f"Bot {bot_id} liberou proxy: {proxy}")
 
+    def close_all(self):
+        """Libera todos os proxies e limpa as estruturas de dados."""
+        with self.lock:
+            self.bot_proxies.clear()
+            self.used_proxies.clear()
+
 def create_proxy_manager(proxy_file: str = 'proxy.txt') -> ProxyManager:
     """Factory function para criar uma nova instância do ProxyManager."""
     return ProxyManager(proxy_file)
