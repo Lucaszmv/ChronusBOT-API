@@ -19,6 +19,8 @@ from pathlib import Path
 import questionary
 from questionary import Style as QuestionaryStyle
 from typing import Optional
+from modules.core.core_chat_manager import get_chat_manager
+from modules.core.core_auth_manager import get_auth_manager
 
 # Inicializa o Colorama
 init()
@@ -320,8 +322,8 @@ def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
     monitor = get_bot_monitor()
     failure_mgr = get_failure_manager()
-    erros_consecutivos = 0
-    last_status_update = time.time()
+    chat_mgr = get_chat_manager()
+    auth_mgr = get_auth_manager()
     
     # Inicializa contadores para este bot
     bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
@@ -338,135 +340,81 @@ def bot_worker(canal_nome: str, bot_id: int):
             'user_ip': 'Waiting IP...'
         })
     
-    def update_bot_status(status: str, ads: str = None):
-        """Atualiza o status do bot no menu"""
-        nonlocal last_status_update
-        current_time = time.time()
+    try:
+        # Tenta obter uma conta para o bot (se houver disponível)
+        account = auth_mgr.get_account(bot_id)
         
-        # Limita atualizações de status para no máximo uma vez por segundo
-        if current_time - last_status_update >= 1:
-            with stats_lock:
-                for bot in bot_stats:
-                    if bot['id'] == bot_id:
-                        bot['status'] = status
-                        if ads:
-                            bot['ads'] = ads
-                        break
-            last_status_update = current_time
-
-    def check_and_update_ip():
-        """Verifica e atualiza o IP periodicamente"""
-        with stats_lock:
-            bot_status = monitor.get_bot_status(bot_id)
-            if bot_status.get('user_ip'):
-                for bot in bot_stats:
-                    if bot['id'] == bot_id:
-                        bot['user_ip'] = bot_status['user_ip']
-                        break
-
-    def add_bot_event(message: str, event_type: str = 'info'):
-        """Adiciona um evento do bot ao menu"""
-        menu.add_event(bot_id, message, event_type)
-    
-    def reiniciar_sessao(motivo: str):
-        """Função interna para reiniciar a sessão completamente"""
-        logger.warning(f"BOT {bot_id}: Reiniciando sessão - Motivo: {motivo}")
-        monitor.update_status(bot_id, "Reiniciando sessão", motivo)
-        
-        # Fecha sessão atual
-        session_manager.close_session(bot_id)
-        
-        # Gera novo fingerprint
-        fingerprint = get_fingerprint()
-        
-        # Cria nova sessão (que já vai obter novo proxy)
-        session = session_manager.get_session(bot_id)
-        if not session:
-            logger.error(f"BOT {bot_id}: Falha ao criar nova sessão")
-            return False
+        # Se conseguiu uma conta, tenta conectar ao chat
+        if account:
+            if not chat_mgr.connect_chat(bot_id, canal_nome, account.oauth_token, account.username):
+                logger.error(f"BOT {bot_id}: Falha ao conectar ao chat")
+                auth_mgr.release_account(bot_id)
+            else:
+                logger.info(f"BOT {bot_id}: Conectado ao chat com conta {account.username}")
+        else:
+            logger.info(f"BOT {bot_id}: Operando sem conta")
             
-        # Reseta contadores de erro
-        failure_mgr.reset_stats(bot_id)
-        return True
-
-    while not should_stop.is_set():
-        try:
-            # Obtém o canal atual do bot
-            current_channel = None
-            with stats_lock:
-                for bot in bot_stats:
-                    if bot['id'] == bot_id:
-                        current_channel = bot['channel']
-                        break
-            
-            if not current_channel:
-                time.sleep(5)
-                continue
-
-            update_bot_status('ONLINE')
-            
-            # Primeira configuração da sessão
-            if not reiniciar_sessao("Iniciando bot"):
-                time.sleep(5)
-                continue
-                
-            # Obtém token
-            fingerprint = session_manager.get_fingerprint(bot_id)
-            token_data = None
-            max_token_tentativas = 3
-            token_tentativas = 0
-            
-            while token_data is None and token_tentativas < max_token_tentativas:
-                token_data = obter_playback_access_token(current_channel, fingerprint, bot_id)
-                if not token_data:
-                    token_tentativas += 1
-                    time.sleep(2)
-            
-            if not token_data:
-                logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
-                continue
-            
-            # Loop principal de atualização
-            while not should_stop.is_set():
-                try:
-                    monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {current_channel}")
-                    
-                    resultado = atualizar_playlist(current_channel, token_data, bot_id,
-                                                 limite_anuncios=None,
-                                                 check_limit_callback=check_anuncios_limit)
-                    
-                    if resultado == 2:  # Mudança de canal
-                        update_bot_status('RECONECT')
-                        add_bot_event("Mudando de canal", 'warning')
-                        session_manager.close_session(bot_id)  # Força fechamento da sessão atual
-                        break  # Sai do loop interno para reiniciar com novo canal
-                    elif resultado is True:  # Finalização
-                        should_stop.set()
-                        break
-                    elif resultado is False:
-                        update_bot_status('RECONECT')
-                        add_bot_event("Reiniciando sessão", 'warning')
-                        reiniciar_sessao("Fila vazia persistente após tentativas de recuperação")
-                        break
-                    
-                    time.sleep(1)
-                    
-                except Exception as e:
-                    update_bot_status('ERRO')
-                    add_bot_event(f"Erro: {str(e)}", 'error')
-                    logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
-                    erros_consecutivos += 1
-                    
-        except Exception as e:
-            if should_stop.is_set():
-                break
-            update_bot_status('ERRO')
-            add_bot_event(f"Erro: {str(e)}", 'error')
-            logger.error(f"BOT {bot_id}: Erro crítico: {str(e)}")
+        # Primeira configuração da sessão
+        if not reiniciar_sessao("Iniciando bot", bot_id):
             time.sleep(5)
-    
-    # Garante que a sessão seja fechada ao sair
-    session_manager.close_session(bot_id)
+            if account:  # Libera a conta apenas se estava usando uma
+                auth_mgr.release_account(bot_id)
+            return
+            
+        # Obtém token
+        fingerprint = session_manager.get_fingerprint(bot_id)
+        token_data = None
+        max_token_tentativas = 3
+        token_tentativas = 0
+        
+        while token_data is None and token_tentativas < max_token_tentativas:
+            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+            if not token_data:
+                token_tentativas += 1
+                time.sleep(2)
+        
+        if not token_data:
+            logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
+            auth_mgr.release_account(bot_id)
+            return
+            
+        # Loop principal de atualização
+        while not should_stop.is_set():
+            try:
+                monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
+                
+                resultado = atualizar_playlist(canal_nome, token_data, bot_id,
+                                          limite_anuncios=None,
+                                          check_limit_callback=check_anuncios_limit)
+                
+                if resultado == 2:  # Mudança de canal
+                    update_bot_status(bot_id, 'RECONECT')
+                    add_bot_event(bot_id, "Mudando de canal", 'warning')
+                    session_manager.close_session(bot_id)
+                    break
+                elif resultado is True:
+                    should_stop.set()
+                    break
+                elif resultado is False:
+                    update_bot_status(bot_id, 'RECONECT')
+                    add_bot_event(bot_id, "Reiniciando sessão", 'warning')
+                    reiniciar_sessao("Fila vazia persistente após tentativas de recuperação", bot_id)
+                    break
+                
+                time.sleep(1)
+                
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
+                time.sleep(5)
+                
+    except Exception as e:
+        logger.error(f"BOT {bot_id}: Erro: {str(e)}")
+        
+    finally:
+        # Desconecta do chat e libera a conta
+        chat_mgr.disconnect_chat(bot_id)
+        auth_mgr.release_account(bot_id)
+        session_manager.close_session(bot_id)
 
 def obter_entrada_canal() -> str:
     """Obtém e valida o nome do canal."""
@@ -629,7 +577,7 @@ def exibir_menu_principal():
     # Cabeçalho com título em negrito e branco
     print(f"\n")
     print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
-    print(f"{padding}                  {Fore.RED}───────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
     print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"\n")
@@ -661,6 +609,38 @@ def mostrar_cabecalho():
     print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
     print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
     print(f"\n")
+
+def reiniciar_sessao(motivo: str, bot_id: int = None) -> bool:
+    """Reinicia a sessão do bot."""
+    try:
+        logger.warning(f"BOT {bot_id}: Reiniciando sessão - Motivo: {motivo}")
+        
+        # Fecha sessão atual
+        session_manager.close_session(bot_id)
+        
+        # Cria nova sessão (que já vai obter novo proxy)
+        session = session_manager.get_session(bot_id)
+        if not session:
+            logger.error(f"BOT {bot_id}: Falha ao criar nova sessão")
+            return False
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"BOT {bot_id}: Erro ao reiniciar sessão: {str(e)}")
+        return False
+
+def update_bot_status(bot_id: int, status: str):
+    """Atualiza o status do bot no menu."""
+    with stats_lock:
+        for bot in bot_stats:
+            if bot['id'] == bot_id:
+                bot['status'] = status
+                break
+
+def add_bot_event(bot_id: int, message: str, event_type: str = 'info'):
+    """Adiciona um evento ao menu."""
+    menu.add_event(bot_id, message, event_type)
 
 def main():
     global limite_anuncios_global
@@ -718,7 +698,7 @@ def main():
                 # Logo
                 print(f"\n")
                 print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
-                print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+                print(f"{padding}                  {Fore.RED}────────────────────────────────────────────{Style.RESET_ALL}")
                 print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
                 print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
                 print(f"\n") 
