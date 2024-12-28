@@ -10,6 +10,17 @@ from modules.utils.utils_logger import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from modules.utils.utils_failure_manager import get_failure_manager
+from modules.utils.utils_bot_monitor import get_bot_monitor, BotStatus
+from modules.core.core_session import session_manager
+from modules.utils.utils_proxy_manager import ProxyManager
+from modules.utils.utils_terminal_menu import create_terminal_menu
+import json
+from pathlib import Path
+import questionary
+from questionary import Style as QuestionaryStyle
+from typing import Optional
+from modules.core.core_chat_manager import get_chat_manager
+from modules.core.core_auth_manager import get_auth_manager
 
 # Inicializa o Colorama
 init()
@@ -30,210 +41,753 @@ total_anuncios_global = 0
 limite_anuncios_global = 0
 should_stop = threading.Event()
 
+# Variáveis globais para estatísticas
+menu = create_terminal_menu()
+stats_lock = threading.Lock()
+global_stats = {
+    'channels': 0,
+    'completed': '0/0',
+    'threads': 0,
+    'proxies': 0,
+    'ads_per_hour': 0.0
+}
+bot_stats = []
+
+# Adicione estas variáveis globais no início do arquivo
+preroll_anuncios = 0
+midroll_anuncios = 0
+anuncios_lock = Lock()
+
+# Adicione estas variáveis globais para cada bot
+bot_anuncios = {}  # Dicionário para armazenar contadores de cada bot
+
+# Adicione estas variáveis globais no início do arquivo, após as importações existentes
+current_channel_index = 0
+channels_list = []
+
+# Defina o estilo personalizado
+custom_style = QuestionaryStyle([
+    ('qmark', 'fg:#000000'),  # ? em preto (praticamente invisível)
+    ('question', 'fg:#ff0000 bold'),  # Pergunta em vermelho
+    ('answer', 'fg:#ff5733 bold'),
+    ('pointer', 'fg:#ff0000 bold'),
+    ('highlighted', 'fg:#ff0000 bold'),
+    ('selected', 'fg:#00ff00'),
+    ('text', 'fg:#ffffff'),
+    ('instruction', 'fg:#ffffff'),
+    ('disabled', 'fg:#858585 italic')
+])
+
+def update_bot_ip(bot_id: int, ip: str):
+    """Atualiza o IP do bot nas estatísticas."""
+    with stats_lock:
+        for bot in bot_stats:
+            if bot['id'] == bot_id:
+                bot['proxy_ip'] = ip
+                logger.info("", extra={
+                    'bot_id': bot_id,
+                    'message': f"IP atualizado para: {ip}"
+                })
+                return
+
 def print_header():
     """Imprime o cabeçalho do programa."""
-    print(f"\n{INFO_COLOR}{'='*60}{RESET}")
-    print(f"{INFO_COLOR}ChronusBOT-API - Twitch Stream Downloader{RESET}")
-    print(f"{INFO_COLOR}{'='*60}{RESET}\n")
+    pass  # Removido pois agora usamos o menu
 
-def log_session_details(bot_id, fingerprint):
-    """Loga os detalhes da sessão atual."""
-    logger.info(f"=== DETALHES DA SESSÃO DO BOT {bot_id} ===")
-    logger.info(f"Bot ID: {bot_id}")
-    logger.info("Fingerprint:")
-    for key, value in fingerprint.items():
-        logger.info(f"  {key}: {value}")
-    logger.info("========================")
+def log_session_details(bot_id, session):
+    """Loga detalhes completos da sessão."""
+    logger.info("", extra={
+        'session_details': {
+            'fingerprint': session.fingerprint,
+            'proxy': session.proxy,
+            'user_agent': session.headers.get('User-Agent'),
+            'client_id': session.headers.get('Client-ID')
+        }
+    })
 
-def log_request_details(action, headers, params=None):
-    """Loga os detalhes de uma requisição."""
-    logger.info(f"=== DETALHES DA REQUISIÇÃO: {action} ===")
-    logger.info("Headers:")
-    for key, value in headers.items():
-        logger.info(f"  {key}: {value}")
-    if params:
-        logger.info("Parâmetros:")
-        for key, value in params.items():
-            logger.info(f"  {key}: {value}")
-    logger.info("========================")
+def log_request_details(method, url, headers_sent, response):
+    """Loga detalhes completos da requisição e resposta."""
+    logger.info("", extra={
+        'request_details': {
+            'method': method,
+            'url': url,
+            'headers_sent': headers_sent,
+            'headers_received': dict(response.headers),
+            'status_code': response.status_code,
+            'reason': response.reason,
+            'response': response.text
+        }
+    })
 
-def check_anuncios_limit(ads_viewed):
-    """Verifica se o limite global de anúncios foi atingido."""
-    global total_anuncios_global, limite_anuncios_global
+def get_next_channel() -> Optional[str]:
+    """
+    Obtém o próximo canal da lista de canais.
+    
+    Returns:
+        Optional[str]: Próximo canal ou None se não houver mais canais
+    """
+    global current_channel_index, channels_list
+    
+    # Carrega a lista de canais se estiver vazia
+    if not channels_list:
+        config = load_config()
+        channels_list = [canal for canal in config['channels'] if canal and isinstance(canal, str)]
+    
+    # Verifica se há mais canais disponíveis
+    if current_channel_index >= len(channels_list):
+        # Não reinicia mais o índice, retorna None para indicar que acabou
+        return None
+        
+    canal = channels_list[current_channel_index]
+    current_channel_index += 1
+    return canal
+
+def check_anuncios_limit(num_anuncios: int, is_preroll: bool, bot_id: int) -> bool:
+    """
+    Callback para verificar limite de anúncios.
+    """
+    global total_anuncios_global
+    
     with anuncios_lock:
-        antigo_total = total_anuncios_global
-        total_anuncios_global += ads_viewed
-        logger.info(f"Anúncios: {antigo_total} -> {total_anuncios_global} (+{ads_viewed})")
+        # Atualiza contadores do bot
+        if is_preroll:
+            bot_anuncios[bot_id]['preroll'] += num_anuncios
+        else:
+            bot_anuncios[bot_id]['midroll'] += num_anuncios
+            
+        # Atualiza contadores globais
+        total_anuncios_global += num_anuncios
         
-        # Cria o diretório de logs se não existir
-        log_dir = os.path.join(os.path.dirname(__file__), 'logs')
-        os.makedirs(log_dir, exist_ok=True)
-        
-        # Nome do arquivo com timestamp
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        log_file = os.path.join(log_dir, f'progresso_anuncios_{timestamp}.txt')
-        
-        # Salva o progresso no arquivo
-        with open(log_file, 'a', encoding='utf-8') as f:
-            progresso = f"Progresso: {total_anuncios_global}/{limite_anuncios_global} anúncios"
-            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {progresso}\n")
-        
-        logger.info(f"Progresso: {total_anuncios_global}/{limite_anuncios_global} anúncios")
-        
-        if total_anuncios_global >= limite_anuncios_global:
-            mensagem = f"Limite máximo de {limite_anuncios_global} anúncios atingido!"
-            logger.warning(mensagem)
-            with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {mensagem}\n")
+        # Atualiza estatísticas do bot no menu
+        with stats_lock:
+            for bot in bot_stats:
+                if bot['id'] == bot_id:
+                    bot['ads'] = f"{bot_anuncios[bot_id]['preroll']}/{bot_anuncios[bot_id]['midroll']}"
+                    break
+                    
+        # Verifica se atingiu o limite global
+        config = load_config()
+        if total_anuncios_global >= config['ads_limit']:
+            logger.info(f"Limite global de {config['ads_limit']} anúncios atingido!")
+            
+            # Sinaliza para todos os bots pararem
             should_stop.set()
+            
+            # Atualiza status de todos os bots para FINALIZADO
+            with stats_lock:
+                for bot in bot_stats:
+                    bot['status'] = 'FINALIZADO'
+                    session_manager.close_session(bot['id'])
+            
+            # Libera todos os recursos
+            session_manager.close_all()
+            ProxyManager().close_all()
+            
+            # Força saída do programa
+            logger.info("Encerrando programa...")
+            os._exit(0)
+            
             return True
+            
     return False
+
+def check_and_change_channel():
+    """Função auxiliar para gerenciar a mudança sincronizada de canal."""
+    # Tenta obter próximo canal
+    next_channel = get_next_channel()
+    if next_channel:
+        logger.info(f"Mudando todos os bots para o canal: {next_channel}")
+        
+        # Reseta contadores globais
+        global total_anuncios_global
+        total_anuncios_global = 0
+        
+        # Limpa contadores por bot
+        bot_anuncios.clear()
+        
+        # Lista para armazenar resultados das operações de token
+        token_results = []
+        
+        # Primeiro, fecha todas as sessões antigas e reseta status
+        with stats_lock:
+            for bot in bot_stats:
+                session_manager.close_session(bot['id'])
+                bot['status'] = 'RECONECT'
+                bot['channel'] = next_channel
+                bot['ads'] = '0/0'
+                bot['user_ip'] = 'Waiting IP...'
+        
+        return 2
+    else:
+        # Modificação aqui: Encerramento mais controlado e definitivo
+        logger.info("Não há mais canais para processar. Iniciando encerramento controlado...")
+        
+        # Define o evento de parada antes de qualquer outra operação
+        should_stop.set()
+        
+        # Atualiza status dos bots para finalizado e fecha todas as sessões
+        with stats_lock:
+            for bot in bot_stats:
+                bot['status'] = 'FINALIZADO'
+                session_manager.close_session(bot['id'])
+                
+        # Libera todos os proxies
+        ProxyManager().close_all()
+        
+        # Força uma última atualização do menu
+        time.sleep(1)
+        
+        # Encerra todas as threads em execução
+        for thread in threading.enumerate():
+            if thread != threading.current_thread():
+                try:
+                    thread.join(timeout=1)
+                except:
+                    pass
+        
+        # Encerra o programa completamente
+        logger.info("Programa finalizado com sucesso.")
+        os._exit(0)  # Força o encerramento imediato do programa
+
+def setup_new_session(bot_id: int, channel: str) -> bool:
+    """Configura nova sessão e token para um bot."""
+    try:
+        # Obtém nova sessão com novo fingerprint e proxy
+        session = session_manager.get_session(bot_id)
+        fingerprint = session_manager.get_fingerprint(bot_id)
+        
+        # Obtém novo token para o novo canal
+        token_data = obter_playback_access_token(channel, fingerprint, bot_id)
+        if token_data:
+            logger.info(f"BOT {bot_id}: Novo token obtido para canal {channel}")
+            
+            # Atualiza o status e IP somente após obter o token com sucesso
+            with stats_lock:
+                for bot in bot_stats:
+                    if bot['id'] == bot_id:
+                        bot['status'] = 'ONLINE'
+                        # O IP será atualizado automaticamente pela função update_menu
+                        # quando a conexão estiver estabelecida
+                        break
+            return True
+        else:
+            logger.error(f"BOT {bot_id}: Falha ao obter token para canal {channel}")
+            return False
+    except Exception as e:
+        logger.error(f"BOT {bot_id}: Erro ao configurar nova sessão: {str(e)}")
+        return False
+
+def update_menu():
+    """Thread para atualizar o menu periodicamente"""
+    monitor = get_bot_monitor()
+    last_update = time.time()
+    last_stats_update = time.time()
+    
+    while not should_stop.is_set():
+        try:
+            current_time = time.time()
+            
+            # Atualiza o menu a cada 1 segundo
+            if current_time - last_update >= 1:
+                with stats_lock:
+                    # Atualiza IPs dos bots apenas se não estiverem em RECONECT ou FINALIZADO
+                    for bot in bot_stats:
+                        if bot['status'] not in ['RECONECT', 'FINALIZADO']:
+                            bot_status = monitor.get_bot_status(bot['id'])
+                            if bot_status and bot_status.get('user_ip'):
+                                bot['user_ip'] = bot_status['user_ip']
+                    
+                    # Renderiza o menu
+                    menu.render(global_stats, bot_stats)
+                    last_update = current_time
+            
+            # Atualiza estatísticas globais a cada 5 segundos
+            if current_time - last_stats_update >= 5:
+                with stats_lock:
+                    # Calcula o total de pre/mid rolls de todos os bots
+                    total_preroll = sum(bot_anuncios[bot_id]['preroll'] for bot_id in bot_anuncios)
+                    total_midroll = sum(bot_anuncios[bot_id]['midroll'] for bot_id in bot_anuncios)
+                    
+                    # Atualiza estatísticas globais
+                    config = load_config()
+                    total_channels = len([canal for canal in config['channels'] if canal and isinstance(canal, str)])
+                    
+                    global_stats.update({
+                        'channels': total_channels,
+                        'completed': f"{total_anuncios_global}/{limite_anuncios_global}",
+                        'threads': len(bot_stats),
+                        'proxies': len(ProxyManager().proxies),
+                        'ads_per_hour': f"{total_preroll}/{total_midroll}"
+                    })
+                    last_stats_update = current_time
+            
+            # Pequena pausa para reduzir uso de CPU
+            time.sleep(0.1)
+            
+        except Exception as e:
+            logger.error(f"Erro ao atualizar menu: {str(e)}")
+            time.sleep(1)
 
 def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
-    logger.info(f"Iniciando BOT {bot_id} para o canal: {canal_nome}")
-    
-    sessao_tentativas = 0
-    max_sessoes = 3  # Número máximo de tentativas de nova sessão
-    sucesso = False
+    monitor = get_bot_monitor()
     failure_mgr = get_failure_manager()
+    chat_mgr = get_chat_manager()
+    auth_mgr = get_auth_manager()
     
-    while sessao_tentativas < max_sessoes and not sucesso and not should_stop.is_set():
-        try:
-            # Verifica se deve reiniciar a sessão
-            if sessao_tentativas > 0 or failure_mgr.should_restart_session(bot_id):
-                logger.info(f"BOT {bot_id}: Iniciando nova sessão ({sessao_tentativas + 1} de {max_sessoes})")
-                session_manager.close_session(bot_id)
-                fingerprint = get_fingerprint()
-                failure_mgr.reset_stats(bot_id)
-            else:
-                fingerprint = session_manager.get_fingerprint(bot_id)
-                if not fingerprint:
-                    fingerprint = get_fingerprint()
-            
-            # Tentativas de obter token
-            token_tentativas = 0
-            max_token_tentativas = 3
-            token_data = None
-            
-            while token_tentativas < max_token_tentativas and not token_data:
-                token_tentativas += 1
-                logger.info(f"BOT {bot_id}: Tentativa {token_tentativas} de {max_token_tentativas} para obter token")
-                
-                token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
-                if not token_data:
-                    if token_tentativas < max_token_tentativas:
-                        logger.warning(f"BOT {bot_id}: Falha ao obter token. Tentando novamente em 5 segundos...")
-                        time.sleep(5)
-                    else:
-                        if failure_mgr.register_failure(bot_id, "Falha ao obter token após 3 tentativas"):
-                            logger.error(f"BOT {bot_id}: Falha crítica ao obter token. Reiniciando sessão...")
-                            break
-                        time.sleep(5)
-                        continue
-            
-            if not token_data:
-                sessao_tentativas += 1
-                continue
-            
-            # Log detalhado do token obtido
-            logger.info(f"""
-BOT {bot_id}: Token obtido com sucesso:
-- Signature: {token_data['signature'][:30]}...
-- Token Value: {token_data['value'][:30]}...
-""")
-            failure_mgr.register_success(bot_id)
-            
-            # Obtém playlist
-            playlist = obter_playlist_m3u8(canal_nome, token_data, bot_id)
-            if not playlist:
-                if failure_mgr.register_failure(bot_id, "Falha ao obter playlist M3U8"):
-                    continue
-                time.sleep(5)
-                continue
-            
-            # Log detalhado da playlist obtida
-            playlist_lines = playlist.split('\n')
-            logger.info(f"""
-BOT {bot_id}: Playlist M3U8 obtida com sucesso:
-- Total de linhas: {len(playlist_lines)}
-- Primeiras linhas:
-{chr(10).join(['  ' + line for line in playlist_lines[:5]])}
-...
-""")
-            failure_mgr.register_success(bot_id)
-            
-            resultado = atualizar_playlist(canal_nome, token_data, bot_id, 
-                                         limite_anuncios=None,
-                                         check_limit_callback=check_anuncios_limit)
-            
-            if resultado:
-                sucesso = True
-                failure_mgr.register_success(bot_id)
-            else:
-                if failure_mgr.register_failure(bot_id, "Falha ao atualizar playlist"):
-                    continue
-
-        except Exception as e:
-            if failure_mgr.register_failure(bot_id, str(e)):
-                continue
-            time.sleep(5)
+    # Carrega configurações
+    config = load_config()
+    ads_limit = config['ads_limit']  # Pega o limite do config.json
+    
+    # Inicializa contadores para este bot
+    bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
+    
+    # Adiciona estatísticas iniciais do bot
+    with stats_lock:
+        bot_stats.append({
+            'id': bot_id,
+            'status': 'ONLINE',
+            'channel': canal_nome,
+            'ads': '0/0',
+            'uptime': '0h 00m',
+            'start_time': datetime.now(),
+            'user_ip': 'Waiting IP...'
+        })
+    
+    try:
+        # Tenta obter uma conta para o bot (se houver disponível)
+        account = auth_mgr.get_account(bot_id)
         
-        if not sucesso:
-            sessao_tentativas += 1
+        # Se conseguiu uma conta, tenta conectar ao chat
+        if account:
+            if not chat_mgr.connect_chat(bot_id, canal_nome, account.oauth_token, account.username):
+                logger.error(f"BOT {bot_id}: Falha ao conectar ao chat")
+                auth_mgr.release_account(bot_id)
+            else:
+                logger.info(f"BOT {bot_id}: Conectado ao chat com conta {account.username}")
+        else:
+            logger.info(f"BOT {bot_id}: Operando sem conta")
+            
+        # Primeira configuração da sessão
+        if not reiniciar_sessao("Iniciando bot", bot_id):
+            time.sleep(5)
+            if account:  # Libera a conta apenas se estava usando uma
+                auth_mgr.release_account(bot_id)
+            return
+            
+        # Obtém token
+        fingerprint = session_manager.get_fingerprint(bot_id)
+        token_data = None
+        max_token_tentativas = 3
+        token_tentativas = 0
+        
+        while token_data is None and token_tentativas < max_token_tentativas:
+            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+            if not token_data:
+                token_tentativas += 1
+                time.sleep(2)
+        
+        if not token_data:
+            logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
+            auth_mgr.release_account(bot_id)
+            return
+            
+        # Loop principal de atualização
+        while not should_stop.is_set():
+            try:
+                monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
+                
+                resultado = atualizar_playlist(canal_nome, token_data, bot_id,
+                                          limite_anuncios=ads_limit,  # Usa o limite do config
+                                          check_limit_callback=check_anuncios_limit)
+                
+                if resultado == 2:  # Mudança de canal
+                    update_bot_status(bot_id, 'RECONECT')
+                    add_bot_event(bot_id, "Mudando de canal", 'warning')
+                    session_manager.close_session(bot_id)
+                    break
+                elif resultado is True:  # Limite de anúncios atingido
+                    logger.info(f"BOT {bot_id}: Limite de {ads_limit} anúncios atingido, encerrando...")
+                    should_stop.set()  # Sinaliza para todos os bots pararem
+                    break
+                elif resultado is False:
+                    update_bot_status(bot_id, 'RECONECT')
+                    add_bot_event(bot_id, "Reiniciando sessão", 'warning')
+                    reiniciar_sessao("Fila vazia persistente após tentativas de recuperação", bot_id)
+                    break
+                
+                time.sleep(1)
+                
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
+                time.sleep(5)
+                
+    except Exception as e:
+        logger.error(f"BOT {bot_id}: Erro: {str(e)}")
+        
+    finally:
+        # Desconecta do chat e libera a conta
+        chat_mgr.disconnect_chat(bot_id)
+        auth_mgr.release_account(bot_id)
+        session_manager.close_session(bot_id)
 
-    if not sucesso:
-        logger.error(f"BOT {bot_id}: Falha após {max_sessoes} tentativas de sessão diferentes")
-        logger.error(f"BOT {bot_id}: Resumo de falhas:\n{failure_mgr.get_failure_summary(bot_id)}")
+def obter_entrada_canal() -> str:
+    """Obtém e valida o nome do canal."""
+    config = load_config()
+    # Filtra valores nulos ou vazios da lista de canais
+    canais_salvos = [canal for canal in config['channels'] if canal and isinstance(canal, str)]
+    
+    if canais_salvos:
+        canal = questionary.select(
+            "\nSelecione um canal ou digite um novo:",
+            choices=[*canais_salvos, "Novo canal", "Voltar"],
+            style=custom_style
+        ).ask()
+        
+        if canal == "Voltar":
+            return None
+        
+        if canal == "Novo canal":
+            mostrar_cabecalho()  # Limpa a tela e mostra o cabeçalho novamente
+            canal = questionary.text(
+                "\nDigite o nome do novo canal:",
+                style=custom_style
+            ).ask()
+    else:
+        canal = questionary.text(
+            "\nDigite o nome do canal:",
+            style=custom_style
+        ).ask()
+    
+    return canal
+
+def obter_numero_bots() -> int:
+    """Obtém e valida o número de bots."""
+    config = load_config()
+    valor_padrao = config['bots']
+    
+    while True:
+        try:
+            entrada = questionary.text(
+                f"\nDigite o número de bots [{valor_padrao}]:",
+                style=custom_style
+            ).ask()
+            
+            if not entrada:
+                return valor_padrao
+                
+            num_bots = int(entrada)
+            if 1 <= num_bots <= 50:
+                return num_bots
+            
+            print(f"{Fore.RED}Erro: O número deve estar entre 1 e 50.{Style.RESET_ALL}")
+            
+        except ValueError:
+            print(f"{Fore.RED}Erro: Digite um número válido.{Style.RESET_ALL}")
+
+def obter_limite_anuncios() -> int:
+    """Obtém e valida o limite de anúncios."""
+    config = load_config()
+    valor_padrao = config['ads_limit']
+    
+    while True:
+        try:
+            entrada = questionary.text(
+                f"\nDigite o limite total de anúncios [{valor_padrao}]:",
+                style=custom_style
+            ).ask()
+            
+            if not entrada:
+                return valor_padrao
+                
+            limite = int(entrada)
+            if limite > 0:
+                return limite
+            
+            print(f"{Fore.RED}Erro: O limite deve ser maior que zero.{Style.RESET_ALL}")
+            
+        except ValueError:
+            print(f"{Fore.RED}Erro: Digite um número válido.{Style.RESET_ALL}")
+
+def exibir_configuracoes(canal: str, num_bots: int, limite_anuncios: int):
+    """Exibe um resumo das configurações."""
+    print(f"\n{Fore.CYAN}RESUMO DAS CONFIGURAÇÕES{Style.RESET_ALL}")
+    
+    print(f"\n{Fore.WHITE}Canal: {Fore.RED}{canal}")
+    print(f"{Fore.WHITE}Número de Bots: {Fore.RED}{num_bots}")
+    print(f"{Fore.WHITE}Limite de Anúncios: {Fore.RED}{limite_anuncios}{Style.RESET_ALL}")
+    
+    print(f"\n{Fore.YELLOW}Pressione ENTER para iniciar ou CTRL+C para cancelar...{Style.RESET_ALL}")
+    input()
+
+def load_config() -> dict:
+    """
+    Carrega as configurações do arquivo config.json.
+    Se o arquivo não existir, cria com valores padrão.
+    
+    Returns:
+        dict: Configurações carregadas
+    """
+    config_path = Path("configs/config.json")
+    
+    # Cria o diretório configs se não existir
+    config_path.parent.mkdir(exist_ok=True)
+    
+    # Configurações padrão
+    default_config = {
+        "channels": [],
+        "bots": 5,
+        "ads_limit": 1000
+    }
+    
+    # Se o arquivo não existe, cria com configurações padrão
+    if not config_path.exists():
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(default_config, f, indent=4)
+        return default_config
+        
+    # Carrega configurações existentes
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Erro ao carregar configurações: {e}")
+        return default_config
+
+def save_config(config: dict):
+    """
+    Salva as configurações no arquivo config.json.
+    
+    Args:
+        config (dict): Configurações a serem salvas
+    """
+    config_path = Path("configs/config.json")
+    try:
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        logger.error(f"Erro ao salvar configurações: {e}")
+
+def add_channel_to_config(channel: str):
+    """
+    Adiciona um canal à lista de canais nas configurações.
+    
+    Args:
+        channel (str): Nome do canal a ser adicionado
+    """
+    config = load_config()
+    if channel not in config['channels']:
+        config['channels'].append(channel)
+        save_config(config)
+
+def exibir_menu_principal():
+    """Exibe o menu principal e retorna a opção selecionada."""
+    # Limpa a tela
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    # Calcula o padding para centralização
+    terminal_width = os.get_terminal_size().columns
+    padding = " " * ((terminal_width - 80) // 2)
+    
+    # Cabeçalho com título em negrito e branco
+    print(f"\n")
+    print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"\n")
+    
+    opcoes = {
+        'Iniciar': 1,
+        'Alterar configurações': 2
+    }
+    
+    escolha = questionary.select(
+        '\nEscolha uma opção:',
+        choices=list(opcoes.keys()),
+        style=custom_style
+    ).ask()
+    
+    return opcoes[escolha]
+
+def mostrar_cabecalho():
+    """Mostra o cabeçalho padrão do programa."""
+    # Limpa a tela
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    # Mostra o cabeçalho
+    terminal_width = os.get_terminal_size().columns
+    padding = " " * ((terminal_width - 80) // 2)
+    print(f"\n")
+    print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
+    print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+    print(f"\n")
+
+def reiniciar_sessao(motivo: str, bot_id: int = None) -> bool:
+    """Reinicia a sessão do bot."""
+    try:
+        logger.warning(f"BOT {bot_id}: Reiniciando sessão - Motivo: {motivo}")
+        
+        # Fecha sessão atual
+        session_manager.close_session(bot_id)
+        
+        # Cria nova sessão (que já vai obter novo proxy)
+        session = session_manager.get_session(bot_id)
+        if not session:
+            logger.error(f"BOT {bot_id}: Falha ao criar nova sessão")
+            return False
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"BOT {bot_id}: Erro ao reiniciar sessão: {str(e)}")
+        return False
+
+def update_bot_status(bot_id: int, status: str):
+    """Atualiza o status do bot no menu."""
+    with stats_lock:
+        for bot in bot_stats:
+            if bot['id'] == bot_id:
+                bot['status'] = status
+                break
+
+def add_bot_event(bot_id: int, message: str, event_type: str = 'info'):
+    """Adiciona um evento ao menu."""
+    menu.add_event(bot_id, message, event_type)
 
 def main():
     global limite_anuncios_global
     
-    logger.info("Iniciando ChronusBOT-API")
-    print_header()
-
     try:
-        canal_nome = input(f"{INFO_COLOR}Digite o nome do canal da Twitch: {RESET}")
-        logger.info(f"Canal solicitado: {canal_nome}")
+        # Carrega configurações
+        config = load_config()
         
         while True:
-            try:
-                num_bots = int(input(f"{INFO_COLOR}Digite o número de bots desejado: {RESET}"))
-                if num_bots > 0:
-                    break
-                print(f"{ERROR_COLOR}Por favor, digite um número maior que zero.{RESET}")
-            except ValueError:
-                print(f"{ERROR_COLOR}Por favor, digite um número válido.{RESET}")
-        
-        while True:
-            try:
-                limite_anuncios_global = int(input(f"{INFO_COLOR}Digite o limite total de anúncios para todos os bots: {RESET}"))
-                if limite_anuncios_global > 0:
-                    break
-                print(f"{ERROR_COLOR}Por favor, digite um número maior que zero.{RESET}")
-            except ValueError:
-                print(f"{ERROR_COLOR}Por favor, digite um número válido.{RESET}")
-        
-        print(f"{INFO_COLOR}Verificando se o canal está online...{RESET}")
-        if not verificar_canal_online(canal_nome):
-            logger.warning(f"Canal {canal_nome} não está online")
-            print(f"{ERROR_COLOR}O canal {canal_nome} não está online no momento.{RESET}")
-            return
-        
-        logger.info(f"Canal {canal_nome} está online")
-        print(f"{SUCCESS_COLOR}Canal {canal_nome} está online!{RESET}")
-        
-        # Iniciar múltiplos bots em threads
-        with ThreadPoolExecutor(max_workers=num_bots) as executor:
-            futures = [executor.submit(bot_worker, canal_nome, bot_id) 
-                      for bot_id in range(1, num_bots + 1)]
+            opcao = exibir_menu_principal()
             
-            # Aguardar todas as threads terminarem
-            for future in futures:
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Erro em thread de bot: {str(e)}")
+            if opcao == 1:  # Iniciar
+                # Verifica se há canais salvos
+                if not config['channels']:
+                    print(f"\n{Fore.RED}Erro: Nenhum canal configurado. Configure um canal primeiro.{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
+                    continue
+                
+                # Usa o último canal adicionado
+                canal_nome = config['channels'][-1]
+                num_bots = config['bots']  # Usa valor salvo
+                limite_anuncios_global = config['ads_limit']  # Usa valor salvo
+                
+                # Verifica se o canal est online
+                if not verificar_canal_online(canal_nome):
+                    print(f"\n{Fore.RED}Erro: Canal offline ou não encontrado.{Style.RESET_ALL}")
+                    input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
+                    continue
+                
+                # Inicia thread do menu
+                menu_thread = threading.Thread(target=update_menu)
+                menu_thread.daemon = True
+                menu_thread.start()
+                
+                # Iniciar múltiplos bots em threads
+                with ThreadPoolExecutor(max_workers=num_bots) as executor:
+                    futures = [executor.submit(bot_worker, canal_nome, bot_id) 
+                              for bot_id in range(1, num_bots + 1)]
+                    
+                    for future in futures:
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logger.error(f"Erro em thread de bot: {str(e)}")
+                break
+                
+            else:  # Alterar configurações
+                # Limpa a tela
+                os.system('cls' if os.name == 'nt' else 'clear')
+                
+                # Calcula o padding para centralização
+                terminal_width = os.get_terminal_size().columns
+                padding = " " * ((terminal_width - 80) // 2)
+                
+                # Logo
+                print(f"\n")
+                print(f"{padding}                                     {Style.BRIGHT}{Fore.WHITE}CHRONUS{Style.RESET_ALL}")
+                print(f"{padding}                  {Fore.RED}────────────────────────────────────────────{Style.RESET_ALL}")
+                print(f"{padding}                              Made by: {Fore.RED}Velbots{Style.RESET_ALL}")
+                print(f"{padding}                  {Fore.RED}─────────────────────────────────────────────{Style.RESET_ALL}")
+                print(f"\n") 
+                opcoes = [
+                    f"Número de Bots: {config['bots']}",
+                    f"Limite de Anúncios: {config['ads_limit']}",
+                    "Gerenciar Canais",
+                    "Voltar"
+                ]
+                
+                escolha = questionary.select(
+                    '\nEscolha uma opção:',
+                    choices=opcoes,
+                    style=custom_style
+                ).ask()
+                
+                if "Número de Bots" in escolha:
+                    mostrar_cabecalho()
+                    config['bots'] = obter_numero_bots()
+                    save_config(config)
+                elif "Limite de Anúncios" in escolha:
+                    mostrar_cabecalho()
+                    config['ads_limit'] = obter_limite_anuncios()
+                    save_config(config)
+                elif "Gerenciar Canais" in escolha:
+                    mostrar_cabecalho()
+                    acao = questionary.select(
+                        '\nO que deseja fazer?',
+                        choices=[
+                            'Adicionar canal',
+                            'Remover canal',
+                            'Voltar'
+                        ],
+                        style=custom_style
+                    ).ask()
+                    
+                    if acao == 'Adicionar canal':
+                        mostrar_cabecalho()  # Limpa a tela antes de mostrar o menu de seleção
+                        canal_nome = obter_entrada_canal()
+                        if canal_nome:  # Só adiciona se não for None (não escolheu Voltar)
+                            add_channel_to_config(canal_nome)
+                            mostrar_cabecalho()  # Limpa a tela e mostra o cabeçalho
+                            # Recarrega a configuração para ter a lista atualizada
+                            config = load_config()
+                    elif acao == 'Remover canal':
+                        mostrar_cabecalho()  # Limpa a tela antes de mostrar o menu de remoção
+                        # Recarrega a configuração para ter a lista mais atual
+                        config = load_config()
+                        if not config['channels']:
+                            print(f"{Fore.RED}Não há canais para remover.{Style.RESET_ALL}")
+                            input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
+                            continue
+                            
+                        # Garante que todos os canais válidos sejam listados
+                        canais_validos = []
+                        for canal in config['channels']:
+                            if canal and isinstance(canal, str):
+                                canais_validos.append(canal)
+                        
+                        canal_remover = questionary.select(
+                            '\nSelecione o canal para remover:',
+                            choices=[*canais_validos, 'Voltar'],
+                            style=custom_style
+                        ).ask()
+                        
+                        if canal_remover != 'Voltar':
+                            config['channels'].remove(canal_remover)
+                            save_config(config)
+                            print(f"{Fore.GREEN}Canal {canal_remover} removido com sucesso!{Style.RESET_ALL}")
+                elif "Voltar" in escolha:
+                    continue
+                
+                print(f"\n{Fore.WHITE}Configurações salvas! Voltando ao menu principal...{Style.RESET_ALL}")
+                time.sleep(3)
 
     except KeyboardInterrupt:
         logger.info("Programa encerrado pelo usuário")

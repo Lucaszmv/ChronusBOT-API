@@ -9,6 +9,7 @@ import random
 import time
 from typing import Optional, Tuple
 from colorama import Fore, Style, init
+from modules.utils.utils_rate_limiter import get_rate_limiter
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -20,6 +21,8 @@ try:
 except ImportError as e:
     logging.error(f"Erro ao importar módulos: {e}")
     sys.exit(1)
+
+logger = logging.getLogger(__name__)
 
 def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -> Optional[str]:
     """
@@ -36,10 +39,17 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -
     max_tentativas = 3
     tentativa = 0
     failure_mgr = get_failure_manager()
+    rate_limiter = get_rate_limiter()
     
     while tentativa < max_tentativas:
         tentativa += 1
         try:
+            # Adquire permissão do rate limiter
+            if not rate_limiter.acquire(bot_id):
+                logger.warning(f"BOT {bot_id}: Limite de requisições atingido, aguardando...")
+                time.sleep(2)
+                continue
+                
             token = token_data['value']
             signature = token_data['signature']
             
@@ -69,6 +79,19 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -
             response = session.get(url, params=params, headers=headers)
             response.raise_for_status()
             
+            # Log detalhado da requisição da playlist
+            logger.info("", extra={
+                'playlist_details': {
+                    'method': 'GET',
+                    'url': response.url,
+                    'headers_sent': dict(response.request.headers),
+                    'headers_received': dict(response.headers),
+                    'status_code': response.status_code,
+                    'reason': response.reason,
+                    'response': response.text[:1000] + ('...' if len(response.text) > 1000 else '')  # Primeiras 1000 chars da playlist
+                }
+            })
+            
             # Se chegou aqui, a requisição foi bem sucedida
             failure_mgr.register_success(bot_id)
             return response.text
@@ -89,6 +112,10 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -
             else:
                 logging.error("Todas as tentativas de obter playlist falharam")
                 return None
+                
+        finally:
+            # Libera o recurso do rate limiter
+            rate_limiter.release(bot_id)
 
     return None
 

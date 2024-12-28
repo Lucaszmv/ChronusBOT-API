@@ -12,6 +12,7 @@ from collections import deque
 from colorama import Fore, Style, init
 from datetime import datetime, timezone
 from typing import Optional
+from modules.utils.utils_rate_limiter import get_rate_limiter
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -40,9 +41,18 @@ WAIT_TIME = lambda: random.uniform(0.10, 0.20)
 # Conjunto para armazenar os segmentos já baixados
 segmentos_baixados = set()
 
+logger = logging.getLogger(__name__)
+
 def simular_download_segmento(url, bot_id=None):
     """Simula o download de um segmento de stream."""
+    rate_limiter = get_rate_limiter()
+    
     try:
+        if not rate_limiter.acquire(bot_id, 'segment'):
+            logger.warning(f"BOT {bot_id}: Limite de downloads atingido, aguardando...")
+            time.sleep(1)
+            return False
+            
         inicio = url.find('https://')
         if inicio == -1 or not url.endswith('.ts'):
             return False
@@ -66,16 +76,14 @@ def simular_download_segmento(url, bot_id=None):
         }
 
         response = session.head(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            print(f"{SUCCESS_COLOR}Segmento baixado: {url[:70]}...{RESET}")
-            return True
-            
-        print(f"{ERROR_COLOR}Falha ao baixar segmento (HTTP {response.status_code}): {url}{RESET}")
-        return False
+        return response.status_code == 200
 
     except Exception as e:
-        print(f"{ERROR_COLOR}Erro ao baixar segmento: {str(e)}{RESET}")
+        logger.error(f"BOT {bot_id}: Erro ao baixar segmento: {str(e)}")
         return False
+
+    finally:
+        rate_limiter.release(bot_id, 'segment')
 
 def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     """Processa a fila de download de segmentos."""
@@ -85,26 +93,20 @@ def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
         queue_size = len(fila_segmentos)
         
         if queue_size == 0:
-            print(f"{WARNING_COLOR}Fila de segmentos vazia. Aguardando...{RESET}")
             time.sleep(0.5)
             continue
 
         url = fila_segmentos[0]
-        print(f"{INFO_COLOR}Baixando: {url[:50]}...{RESET}")
-
         success = simular_download_segmento(url, bot_id)
         
         if success:
             segmentos_baixados.add(url)
             fila_segmentos.popleft()
             segmentos_processados += 1
-            print(f"{Fore.WHITE}Segmentos processados: {segmentos_processados}{RESET}")
         else:
-            print(f"{ERROR_COLOR}Falha ao baixar segmento{RESET}")
             time.sleep(1)
 
         wait_time = WAIT_TIME()
-        print(f"{INFO_COLOR}Próximo download em: {wait_time:.2f}s | Fila: {queue_size} segmentos{RESET}")
         time.sleep(wait_time)
 
 def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
@@ -113,4 +115,3 @@ def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
     thread_downloader = threading.Thread(target=processar_fila_download, args=(fila_segmentos, bot_id))
     thread_downloader.daemon = True
     thread_downloader.start()
-    print(f"{INFO_COLOR}Simulador de download iniciado em thread separada{RESET}")

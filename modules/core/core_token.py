@@ -9,6 +9,11 @@ import requests
 import json
 import logging
 from typing import Dict, Optional
+import time
+from modules.utils.utils_rate_limiter import get_rate_limiter
+from modules.utils.utils_logger import get_logger
+
+logger = get_logger(__name__)
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -72,28 +77,61 @@ def criar_payload_playback_token(channel_name: str) -> Dict:
 
 def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: int = None) -> Optional[dict]:
     """Obtém o token de acesso de reprodução."""
-    # Importação movida para dentro da função para evitar circular import
-    from modules.core.core_session import get_session
-    
-    url = "https://gql.twitch.tv/gql"
-    headers = get_playback_access_token_headers(fingerprint)
-    payload = criar_payload_playback_token(channel_name)
-    
-    session = get_session(bot_id)
+    rate_limiter = get_rate_limiter()
     
     try:
+        if not rate_limiter.acquire(bot_id, 'playlist'):
+            logger.warning(f"BOT {bot_id}: Limite de requisições de token atingido, aguardando...")
+            time.sleep(2)
+            return None
+            
+        from modules.core.core_session import get_session
+        
+        url = "https://gql.twitch.tv/gql"
+        headers = get_playback_access_token_headers(fingerprint)
+        payload = criar_payload_playback_token(channel_name)
+        
+        session = get_session(bot_id)
+        
         response = session.post(url, headers=headers, json=payload)
+        response_text = response.text
+        
+        logger.info(f"BOT {bot_id}: Token Response: {response_text[:500]}")  # Log primeiros 500 chars
+        
         response.raise_for_status()
         data = response.json()
         
         if 'data' in data and 'streamPlaybackAccessToken' in data['data']:
-            return data['data']['streamPlaybackAccessToken']
+            token_data = data['data']['streamPlaybackAccessToken']
+            
+            try:
+                token_value = json.loads(token_data['value'])
+                user_ip = token_value.get('user_ip')
+                
+                # Log detalhado do token e IP
+                logger.info("", extra={
+                    'token_response': json.dumps(token_value, indent=2),
+                    'user_ip': user_ip,
+                    'bot_id': bot_id
+                })
+                
+                if user_ip and bot_id:
+                    from modules.utils.utils_bot_monitor import get_bot_monitor
+                    monitor = get_bot_monitor()
+                    monitor.update_bot_ip(bot_id, user_ip)
+                
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Token parsing error: {str(e)}")
+            
+            return token_data
         else:
             logging.error("Falha ao obter token de acesso de reprodução")
             return None
     except requests.exceptions.RequestException as e:
         logging.error(f"Erro na requisição: {e}")
         return None
+    finally:
+        rate_limiter.release(bot_id, 'playlist')
 
 # Alias para compatibilidade
 obter_token_acesso = obter_playback_access_token
