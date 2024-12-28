@@ -142,42 +142,52 @@ def get_next_channel() -> Optional[str]:
     current_channel_index += 1
     return canal
 
-def check_anuncios_limit(ads_viewed, is_preroll=False, bot_id=None):
-    """Verifica se o limite global de anúncios foi atingido e atualiza contadores por bot."""
-    global total_anuncios_global, limite_anuncios_global
+def check_anuncios_limit(num_anuncios: int, is_preroll: bool, bot_id: int) -> bool:
+    """
+    Callback para verificar limite de anúncios.
+    """
+    global total_anuncios_global
     
     with anuncios_lock:
-        # Inicializa contadores para o bot se não existirem
-        if bot_id not in bot_anuncios:
-            bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
-        
-        # Calcula o total após adicionar os novos anúncios
-        novo_total = total_anuncios_global + ads_viewed
-        
-        # Se o novo total ultrapassaria o limite, não incrementa e força mudança de canal
-        if novo_total > limite_anuncios_global:
-            logger.info(f"Limite de {limite_anuncios_global} anúncios atingido. Iniciando mudança sincronizada de canal.")
-            return check_and_change_channel()
-            
-        # Atualiza contadores do bot específico
+        # Atualiza contadores do bot
         if is_preroll:
-            bot_anuncios[bot_id]['preroll'] += ads_viewed
+            bot_anuncios[bot_id]['preroll'] += num_anuncios
         else:
-            bot_anuncios[bot_id]['midroll'] += ads_viewed
+            bot_anuncios[bot_id]['midroll'] += num_anuncios
             
-        # Atualiza total global
-        total_anuncios_global = novo_total
+        # Atualiza contadores globais
+        total_anuncios_global += num_anuncios
         
-        # Atualiza o status do bot com seus próprios valores
-        for bot in bot_stats:
-            if bot['id'] == bot_id:
-                bot['ads'] = f"{bot_anuncios[bot_id]['preroll']}/{bot_anuncios[bot_id]['midroll']}"
-                break
-        
-        # Se atingiu exatamente o limite, inicia mudança de canal
-        if total_anuncios_global == limite_anuncios_global:
-            logger.info(f"Limite exato de {limite_anuncios_global} anúncios atingido. Iniciando mudança sincronizada de canal.")
-            return check_and_change_channel()
+        # Atualiza estatísticas do bot no menu
+        with stats_lock:
+            for bot in bot_stats:
+                if bot['id'] == bot_id:
+                    bot['ads'] = f"{bot_anuncios[bot_id]['preroll']}/{bot_anuncios[bot_id]['midroll']}"
+                    break
+                    
+        # Verifica se atingiu o limite global
+        config = load_config()
+        if total_anuncios_global >= config['ads_limit']:
+            logger.info(f"Limite global de {config['ads_limit']} anúncios atingido!")
+            
+            # Sinaliza para todos os bots pararem
+            should_stop.set()
+            
+            # Atualiza status de todos os bots para FINALIZADO
+            with stats_lock:
+                for bot in bot_stats:
+                    bot['status'] = 'FINALIZADO'
+                    session_manager.close_session(bot['id'])
+            
+            # Libera todos os recursos
+            session_manager.close_all()
+            ProxyManager().close_all()
+            
+            # Força saída do programa
+            logger.info("Encerrando programa...")
+            os._exit(0)
+            
+            return True
             
     return False
 
@@ -325,6 +335,10 @@ def bot_worker(canal_nome: str, bot_id: int):
     chat_mgr = get_chat_manager()
     auth_mgr = get_auth_manager()
     
+    # Carrega configurações
+    config = load_config()
+    ads_limit = config['ads_limit']  # Pega o limite do config.json
+    
     # Inicializa contadores para este bot
     bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
     
@@ -384,7 +398,7 @@ def bot_worker(canal_nome: str, bot_id: int):
                 monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
                 
                 resultado = atualizar_playlist(canal_nome, token_data, bot_id,
-                                          limite_anuncios=None,
+                                          limite_anuncios=ads_limit,  # Usa o limite do config
                                           check_limit_callback=check_anuncios_limit)
                 
                 if resultado == 2:  # Mudança de canal
@@ -392,8 +406,9 @@ def bot_worker(canal_nome: str, bot_id: int):
                     add_bot_event(bot_id, "Mudando de canal", 'warning')
                     session_manager.close_session(bot_id)
                     break
-                elif resultado is True:
-                    should_stop.set()
+                elif resultado is True:  # Limite de anúncios atingido
+                    logger.info(f"BOT {bot_id}: Limite de {ads_limit} anúncios atingido, encerrando...")
+                    should_stop.set()  # Sinaliza para todos os bots pararem
                     break
                 elif resultado is False:
                     update_bot_status(bot_id, 'RECONECT')
