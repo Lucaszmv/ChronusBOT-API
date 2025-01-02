@@ -1,0 +1,10 @@
+Melhoria #1 - Obter Token e Nova Sessão
+- Problema: Atualmente após 3 tentativas falhas de obter token, a função apenas retorna None, não sinalizando necessidade de nova sessão
+- Solução: Após as 3 tentativas falhas, além de retornar None, devemos sinalizar que o sistema precisa criar uma nova sessão
+
+
+Melhoria #2 - Obter Playlist e Nova Sessão
+- Problema: Atualmente a função obter_playlist_m3u8 tenta 3 vezes obter a playlist, mas não está claro se após essas falhas ela sinaliza corretamente para criar uma nova sessão
+- Solução: Após 3 tentativas falhas de obter a playlist, devemos garantir que o sistema entenda que precisa criar uma nova sessão, similar à lógica do token
+
+

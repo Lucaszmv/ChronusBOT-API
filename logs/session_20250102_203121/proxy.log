@@ -1,0 +1,347 @@
+
+Carregadas 10 contas do accounts.txt
+Limites ajustados para 1 bots - Playlist: 5, Segmentos: 10
+BOT 1: Conectado ao chat do canal gaules
+BOT 1: Conectado ao chat com conta user_9
+BOT 1: Reiniciando sessão - Motivo: Iniciando bot
+BOT 1: Aguardando 6.3s antes de iniciar nova sessão...
+BOT 2: Conectado ao chat do canal gaules
+BOT 2: Conectado ao chat com conta user_1
+BOT 2: Reiniciando sessão - Motivo: Iniciando bot
+BOT 2: Aguardando 9.6s antes de iniciar nova sessão...
+BOT 4: Conectado ao chat do canal gaules
+BOT 4: Conectado ao chat com conta user_5
+BOT 4: Reiniciando sessão - Motivo: Iniciando bot
+BOT 4: Aguardando 6.9s antes de iniciar nova sessão...
+BOT 5: Conectado ao chat do canal gaules
+BOT 5: Conectado ao chat com conta user_4
+BOT 5: Reiniciando sessão - Motivo: Iniciando bot
+BOT 5: Aguardando 5.6s antes de iniciar nova sessão...
+BOT 6: Conectado ao chat do canal gaules
+BOT 6: Conectado ao chat com conta user_8
+BOT 6: Reiniciando sessão - Motivo: Iniciando bot
+BOT 6: Aguardando 7.7s antes de iniciar nova sessão...
+BOT 3: Conectado ao chat do canal gaules
+BOT 3: Conectado ao chat com conta user_6
+BOT 3: Reiniciando sessão - Motivo: Iniciando bot
+BOT 3: Aguardando 5.8s antes de iniciar nova sessão...
+BOT 5: Testando proxy 185.198.26.198:34007:0rQ0z:szpy0
+BOT 5: Proxy socks5://0rQ0z:szpy0@185.198.26.198:34007 funcionando
+
+BOT 1: Testando proxy 185.198.26.198:17644:YozwJ:00tMf
+Nova sessão criada para bot 5
+Limites ajustados para 1 bots - Playlist: 5, Segmentos: 10
+BOT 5: Token Response: {"data":{"streamPlaybackAccessToken":{"value":"{\"adblock\":false,\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"blackout_enabled\":false,\"channel\":\"gaules\",\"channel_id\":181077473,\"chansub\":{\"restricted_bitrates\":[],\"view_until\":1924905600},\"ci_gb\":false,\"geoblock_reason\":\"\",\"device_id\":\"VepVTHvrsbLizOFBCQXOfl9WWhHnD3iV\",\"expires\":1735861954,\"extended_history_allowed\":false,\"game\":\"\",\"hide_ads\":false,\"https_required\":true,\"mature\":false,\"partner\":
+
+TOKEN RESPONSE - BOT 5:
+Response: {
+  "adblock": false,
+  "authorization": {
+    "forbidden": false,
+    "reason": ""
+  },
+  "blackout_enabled": false,
+  "channel": "gaules",
+  "channel_id": 181077473,
+  "chansub": {
+    "restricted_bitrates": [],
+    "view_until": 1924905600
+  },
+  "ci_gb": false,
+  "geoblock_reason": "",
+  "device_id": "VepVTHvrsbLizOFBCQXOfl9WWhHnD3iV",
+  "expires": 1735861954,
+  "extended_history_allowed": false,
+  "game": "",
+  "hide_ads": false,
+  "https_required": true,
+  "mature": false,
+  "partner": false,
+  "platform": "web",
+  "player_type": "site",
+  "private": {
+    "allowed_to_view": true
+  },
+  "privileged": false,
+  "role": "",
+  "server_ads": true,
+  "show_ads": true,
+  "subscriber": false,
+  "turbo": false,
+  "user_id": null,
+  "user_ip": "99.39.78.241",
+  "version": 2
+}
+Extracted IP: 99.39.78.241
+================================================================================
+BOT 5: IP Update - Previous: None, New: 99.39.78.241
+Assistindo | Canal: gaules
+BOT 1: Proxy socks5://YozwJ:00tMf@185.198.26.198:17644 funcionando
+
+BOT 4: Testando proxy 185.198.26.198:30797:wtGH7:ge2Jy
+Nova sessão criada para bot 1
+Limites ajustados para 2 bots - Playlist: 5, Segmentos: 10
+BOT 1: Token Response: {"data":{"streamPlaybackAccessToken":{"value":"{\"adblock\":false,\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"blackout_enabled\":false,\"channel\":\"gaules\",\"channel_id\":181077473,\"chansub\":{\"restricted_bitrates\":[],\"view_until\":1924905600},\"ci_gb\":false,\"geoblock_reason\":\"\",\"device_id\":\"bT179nG8LLTG3LgVrnN5cvTKcBDSk7GD\",\"expires\":1735861957,\"extended_history_allowed\":false,\"game\":\"\",\"hide_ads\":false,\"https_required\":true,\"mature\":false,\"partner\":
+
+TOKEN RESPONSE - BOT 1:
+Response: {
+  "adblock": false,
+  "authorization": {
+    "forbidden": false,
+    "reason": ""
+  },
+  "blackout_enabled": false,
+  "channel": "gaules",
+  "channel_id": 181077473,
+  "chansub": {
+    "restricted_bitrates": [],
+    "view_until": 1924905600
+  },
+  "ci_gb": false,
+  "geoblock_reason": "",
+  "device_id": "bT179nG8LLTG3LgVrnN5cvTKcBDSk7GD",
+  "expires": 1735861957,
+  "extended_history_allowed": false,
+  "game": "",
+  "hide_ads": false,
+  "https_required": true,
+  "mature": false,
+  "partner": false,
+  "platform": "web",
+  "player_type": "site",
+  "private": {
+    "allowed_to_view": true
+  },
+  "privileged": false,
+  "role": "",
+  "server_ads": true,
+  "show_ads": true,
+  "subscriber": false,
+  "turbo": false,
+  "user_id": null,
+  "user_ip": "166.155.73.240",
+  "version": 2
+}
+Extracted IP: 166.155.73.240
+================================================================================
+BOT 1: IP Update - Previous: None, New: 166.155.73.240
+Assistindo | Canal: gaules
+BOT 4: Proxy socks5://wtGH7:ge2Jy@185.198.26.198:30797 funcionando
+
+BOT 6: Testando proxy 185.198.26.198:54854:Ih089:oJoJE
+Nova sessão criada para bot 4
+Limites ajustados para 3 bots - Playlist: 5, Segmentos: 10
+
+BOT 4: Token Response: {"data":{"streamPlaybackAccessToken":{"value":"{\"adblock\":false,\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"blackout_enabled\":false,\"channel\":\"gaules\",\"channel_id\":181077473,\"chansub\":{\"restricted_bitrates\":[],\"view_until\":1924905600},\"ci_gb\":false,\"geoblock_reason\":\"\",\"device_id\":\"jOSfKeynrvldI7o02SahDhVPvZX8zNNm\",\"expires\":1735861960,\"extended_history_allowed\":false,\"game\":\"\",\"hide_ads\":false,\"https_required\":true,\"mature\":false,\"partner\":
+
+TOKEN RESPONSE - BOT 4:
+Response: {
+  "adblock": false,
+  "authorization": {
+    "forbidden": false,
+    "reason": ""
+  },
+  "blackout_enabled": false,
+  "channel": "gaules",
+  "channel_id": 181077473,
+  "chansub": {
+    "restricted_bitrates": [],
+    "view_until": 1924905600
+  },
+  "ci_gb": false,
+  "geoblock_reason": "",
+  "device_id": "jOSfKeynrvldI7o02SahDhVPvZX8zNNm",
+  "expires": 1735861960,
+  "extended_history_allowed": false,
+  "game": "",
+  "hide_ads": false,
+  "https_required": true,
+  "mature": false,
+  "partner": false,
+  "platform": "web",
+  "player_type": "site",
+  "private": {
+    "allowed_to_view": true
+  },
+  "privileged": false,
+  "role": "",
+  "server_ads": true,
+  "show_ads": true,
+  "subscriber": false,
+  "turbo": false,
+  "user_id": null,
+  "user_ip": "158.140.39.128",
+  "version": 2
+}
+Extracted IP: 158.140.39.128
+================================================================================
+BOT 4: IP Update - Previous: None, New: 158.140.39.128
+Assistindo | Canal: gaules
+
+BOT 6: Proxy socks5://Ih089:oJoJE@185.198.26.198:54854 funcionando
+
+BOT 3: Testando proxy 185.198.26.198:48932:FugUE:jTGLd
+Nova sessão criada para bot 6
+Limites ajustados para 4 bots - Playlist: 5, Segmentos: 10
+Novo pod de anúncios detectado: Início: 2025-01-02T23:32:36.173Z, 2 anúncios PREROLL - Formato: standard_video_ad
+BOT 6: Token Response: {"data":{"streamPlaybackAccessToken":{"value":"{\"adblock\":false,\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"blackout_enabled\":false,\"channel\":\"gaules\",\"channel_id\":181077473,\"chansub\":{\"restricted_bitrates\":[],\"view_until\":1924905600},\"ci_gb\":false,\"geoblock_reason\":\"\",\"device_id\":\"EP2r8MnuBUJlPX19Z6FINpqnVP8Y2uTs\",\"expires\":1735861963,\"extended_history_allowed\":false,\"game\":\"\",\"hide_ads\":false,\"https_required\":true,\"mature\":false,\"partner\":
+
+TOKEN RESPONSE - BOT 6:
+Response: {
+  "adblock": false,
+  "authorization": {
+    "forbidden": false,
+    "reason": ""
+  },
+  "blackout_enabled": false,
+  "channel": "gaules",
+  "channel_id": 181077473,
+  "chansub": {
+    "restricted_bitrates": [],
+    "view_until": 1924905600
+  },
+  "ci_gb": false,
+  "geoblock_reason": "",
+  "device_id": "EP2r8MnuBUJlPX19Z6FINpqnVP8Y2uTs",
+  "expires": 1735861963,
+  "extended_history_allowed": false,
+  "game": "",
+  "hide_ads": false,
+  "https_required": true,
+  "mature": false,
+  "partner": false,
+  "platform": "web",
+  "player_type": "site",
+  "private": {
+    "allowed_to_view": true
+  },
+  "privileged": false,
+  "role": "",
+  "server_ads": true,
+  "show_ads": true,
+  "subscriber": false,
+  "turbo": false,
+  "user_id": null,
+  "user_ip": "206.40.113.16",
+  "version": 2
+}
+Extracted IP: 206.40.113.16
+================================================================================
+BOT 6: IP Update - Previous: None, New: 206.40.113.16
+Assistindo | Canal: gaules
+
+Novo pod de anúncios detectado: Início: 2025-01-02T23:32:38.173Z, 2 anúncios PREROLL - Formato: standard_video_ad
+BOT 3: Proxy socks5://FugUE:jTGLd@185.198.26.198:48932 funcionando
+
+BOT 2: Testando proxy 185.198.26.198:46539:tywwy:PSWO1
+Nova sessão criada para bot 3
+Limites ajustados para 5 bots - Playlist: 5, Segmentos: 10
+BOT 3: Token Response: {"data":{"streamPlaybackAccessToken":{"value":"{\"adblock\":false,\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"blackout_enabled\":false,\"channel\":\"gaules\",\"channel_id\":181077473,\"chansub\":{\"restricted_bitrates\":[],\"view_until\":1924905600},\"ci_gb\":false,\"geoblock_reason\":\"\",\"device_id\":\"WF8Gvf6pf9edhNDvJO2S7E2F6mpnKKeq\",\"expires\":1735861965,\"extended_history_allowed\":false,\"game\":\"\",\"hide_ads\":false,\"https_required\":true,\"mature\":false,\"partner\":
+
+TOKEN RESPONSE - BOT 3:
+Response: {
+  "adblock": false,
+  "authorization": {
+    "forbidden": false,
+    "reason": ""
+  },
+  "blackout_enabled": false,
+  "channel": "gaules",
+  "channel_id": 181077473,
+  "chansub": {
+    "restricted_bitrates": [],
+    "view_until": 1924905600
+  },
+  "ci_gb": false,
+  "geoblock_reason": "",
+  "device_id": "WF8Gvf6pf9edhNDvJO2S7E2F6mpnKKeq",
+  "expires": 1735861965,
+  "extended_history_allowed": false,
+  "game": "",
+  "hide_ads": false,
+  "https_required": true,
+  "mature": false,
+  "partner": false,
+  "platform": "web",
+  "player_type": "site",
+  "private": {
+    "allowed_to_view": true
+  },
+  "privileged": false,
+  "role": "",
+  "server_ads": true,
+  "show_ads": true,
+  "subscriber": false,
+  "turbo": false,
+  "user_id": null,
+  "user_ip": "69.222.188.217",
+  "version": 2
+}
+Extracted IP: 69.222.188.217
+================================================================================
+BOT 3: IP Update - Previous: None, New: 69.222.188.217
+Assistindo | Canal: gaules
+Novo pod de anúncios detectado: Início: 2025-01-02T23:32:42.173Z, 1 anúncios PREROLL - Formato: standard_video_ad
+
+
+BOT 2: Proxy 185.198.26.198:46539:tywwy:PSWO1 falhou no teste
+BOT 2: Testando proxy 185.198.26.198:13416:L574j:DUriw
+Novo pod de anúncios detectado: Início: 2025-01-02T23:32:48.173Z, 1 anúncios PREROLL - Formato: standard_video_ad
+BOT 2: Proxy socks5://L574j:DUriw@185.198.26.198:13416 funcionando
+
+Nova sessão criada para bot 2
+Limites ajustados para 6 bots - Playlist: 5, Segmentos: 10
+Novo pod de anúncios detectado: Início: 2025-01-02T23:32:53.389Z, 2 anúncios PREROLL - Formato: standard_video_ad
+BOT 2: Token Response: {"data":{"streamPlaybackAccessToken":{"value":"{\"adblock\":false,\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"blackout_enabled\":false,\"channel\":\"gaules\",\"channel_id\":181077473,\"chansub\":{\"restricted_bitrates\":[],\"view_until\":1924905600},\"ci_gb\":false,\"geoblock_reason\":\"\",\"device_id\":\"XeShKxeaxpn9ZHUJsS3Ot3UfSpySzK92\",\"expires\":1735861979,\"extended_history_allowed\":false,\"game\":\"\",\"hide_ads\":false,\"https_required\":true,\"mature\":false,\"partner\":
+
+TOKEN RESPONSE - BOT 2:
+Response: {
+  "adblock": false,
+  "authorization": {
+    "forbidden": false,
+    "reason": ""
+  },
+  "blackout_enabled": false,
+  "channel": "gaules",
+  "channel_id": 181077473,
+  "chansub": {
+    "restricted_bitrates": [],
+    "view_until": 1924905600
+  },
+  "ci_gb": false,
+  "geoblock_reason": "",
+  "device_id": "XeShKxeaxpn9ZHUJsS3Ot3UfSpySzK92",
+  "expires": 1735861979,
+  "extended_history_allowed": false,
+  "game": "",
+  "hide_ads": false,
+  "https_required": true,
+  "mature": false,
+  "partner": false,
+  "platform": "web",
+  "player_type": "site",
+  "private": {
+    "allowed_to_view": true
+  },
+  "privileged": false,
+  "role": "",
+  "server_ads": true,
+  "show_ads": true,
+  "subscriber": false,
+  "turbo": false,
+  "user_id": null,
+  "user_ip": "67.241.135.25",
+  "version": 2
+}
+Extracted IP: 67.241.135.25
+================================================================================
+BOT 2: IP Update - Previous: None, New: 67.241.135.25
+Assistindo | Canal: gaules
+
+Novo pod de anúncios detectado: Início: 2025-01-02T23:33:06.404Z, 2 anúncios PREROLL - Formato: standard_video_ad
+BOT 1: Pod de anúncios visualizado com sucesso! Último segmento: https://video-edge-ee557e.iad05.abs.hls.ttvnw.net/v1/segment/CvsFR7rfBT83v3VgbjOIthN8DRkklAxXKInxSflsu0ezZ1Os27bT5L_j6tIcz-RNRQsXWE59B42MrqQZUTKXCSupdBe_eRDWR6foo04MMeoHKTp6VJKsRNie5C6TJ4NWcV54nUu4kBZYNhY-W2QV-F2NCpo40fcHGkemXnBXihzcdVckAWEhTEHAwtaRJnHfMF1YCvOHLFGrGITJhxpslqxc3HAZa6g2OhtO4KoNuwhGC5XyFCDzca1r8mqGdZECxrbSKf-1swO-7LNYneo85Kj9IN6_fSO_ctiyAhFQ55svIAIWKFcWSJAuqEtCoO4EZiApVL0s8Z2KtGvW2Z7EPPHqs77SY4EVUrd8B5pRu9zPfD4UXkPwtddYP5i0Wl9-nbGY4tijGWvoxUzRWw5cyaEgu_cUExtSDksj2wX9_Dn3ll8jxK08UE5OejE1ZplkaRPovNlWWopTlUw-F814-AzfcRST6uxWIyEn2-Q8DsXm8t7SukcnA_4vfsA-O_WNKRBaMFNbxk7-Ga1yAHM9MjAwa63Q4_QCC1tyxM4OSs75NtBXz2_D90PMNLjVK1wvIpHtbT7HtJFd1MmGO8eIYIp-ro4rDIselLKW35KN4evj795USYGHeZ8AUiOimk_zEOFMtZZvobH8zFLCeAUvX-0VW6cMCNwl-QVDlrNe3oZ3tXqe117wRV7acFaywNRt3ykIOpGmPf_QvQP3bxDxIM5e-tBVhvFeeudw1vMuBz0ZfVvB-YC4Kj6ZBvPOmVcGqvOt86o3n3CMiGAsscA971jVVERGHcD8AsB7E9XZ4TbK8OGvVXZNutUSKQY8rz4WNQhvDg4IKtVcoyzhdwSO0zl8rfy6TnoTlZ6wevYLt83ZAIc7ZOrOqAOqA83JCuXwYr0ly3Z1WcElQGt5ZlHxYLCpxwt8JOdqyRkV0SQbovx3aa7Xy_9hX-ggbXO4qwTh6nEpB4DCOoo1E_UTy4wCh9vCfxSMZS-4AbmZfx5t2L0uPRLGcZvkBNZ1jNetJRoME-kSm5f6H5ReLW8nIAEqCXVzLWVhc3QtMTDVCQ.ts
+BOT 1: Total de pods de anúncios visualizados: 1
+BOT 1: Anúncios assistidos no total: 2
+BOT 4: Pod de anúncios visualizado com sucesso! Último segmento: https://video-edge-832dd0.lax03.abs.hls.ttvnw.net/v1/segment/CvEF_l0xFG7U9Px8hX8xVUA3N1jc6xwDFZYsB1lmsE2tjuBbHWigI6tpLVdljWywyYEnff07i0PhS54gC8eHV2LuBfwwdQrn_gtsV-gzKnFo2g9j-OBeNtG5cGmb8Ii790hwUH_sxRD6GKaPnsCmwaxZ0euGxYNajXP1bPtNTevD_r-uRVy6PIoPENWZMlIoguOQKuHz9fsQVo4pes8XPFQvkWBXS1QM05FaZ7_5wBnhMY-K0K7glAC4qmuZ-DpDwZXC892H687vWsNx7S98mH5wpvW25TpHhqqOtrAhjr0CA7_p8QDasfyWE-PnvJFb-N101GVB3Z_xFFoDSlr99_nW8LDvyL40A5LKBIHI3flbSSGDJdyhQHuUpIuiRn0O2DcFQ8OA7mpgeb_hq_NNYiWnr9t5vm6asfp3-lHa1qklCj_58j0pewj6lwgyk0PMx09-r1DM8Cfms9hUMzepjguupmyaXPcINBGFBRTsegk4Mzg4xJU1TAbA4Kziq3HyIJHmlQV4UD4-CCLOwaHBfneWC7-c0JWUaePqMLCzAha8-1OKDApdkC8WcxTWiHRzIUyIP4p_XXyBekMOfoHhIlzy0B4B4BDTcx57s9wCJoqkN9PYluZnRQ4POM5jJa1euXGEZWpuBLLRx1_t6_WFzDUSUxBbeZvWXKa4gZbE80vmjdazrAb_loXk5-CCs_qTEXXudHsg7aDP0HOwgb5WryW9C0_LonJsaoMuVGf7EdPt2npmTqTsBoNwCaR6d6z7tjZ39vhNnUdEUqANkJs3zNk9BWlwA-LcttpU5JiXARk0VUEqyLYiy-07d-oC62Gjm7R5hB3SigzC1SptcgCBczXLa7XHevi0J8GPavl65h7DX0a8WCWNoJdk-eBoYwu9-sevsltGG8TFzGzFabUXyHw8-bXYA6Jp7wCaoW0WxUB0zULmr5OvxTq7rikuzoxN3iF1zj2eAkwcDLOJPbksliRqT89OPHva5Gs5pzOkEcY2YfKtGgx2U5H9y5wpV7e7wsAgASoJdXMtZWFzdC0xMNUJ.ts
+BOT 4: Total de pods de anúncios visualizados: 1
+BOT 4: Anúncios assistidos no total: 1
