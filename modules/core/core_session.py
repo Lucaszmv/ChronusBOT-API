@@ -35,13 +35,7 @@ class SessionManager:
         
     def get_session(self, bot_id: int) -> requests.Session:
         """
-        Obtém ou cria uma sessão para um bot específico.
-        
-        Args:
-            bot_id (int): ID único do bot
-            
-        Returns:
-            requests.Session: Sessão HTTP para o bot
+        Obtém ou cria uma sessão para um bot específico, sempre usando proxy.
         """
         if bot_id not in self.sessions:
             # Importações sob demanda para evitar circular import
@@ -50,11 +44,15 @@ class SessionManager:
             # Gerar novo fingerprint para o bot
             self.fingerprints[bot_id] = get_fingerprint()
             
-            # Obtém proxy do gerenciador
-            proxy = self.proxy_manager.get_proxy(bot_id)
-            if proxy:
-                self.bot_proxies[bot_id] = proxy
-                
+            # Obtém proxy do gerenciador (agora vai tentar indefinidamente)
+            proxy = None
+            while not proxy:
+                proxy = self.proxy_manager.get_proxy(bot_id)
+                if not proxy:
+                    logger.warning(f"BOT {bot_id}: Aguardando proxy válido...")
+                    time.sleep(5)
+            
+            self.bot_proxies[bot_id] = proxy
             self.sessions[bot_id] = self.create_session(proxy)
             
             # Log detalhado da sessão
@@ -67,7 +65,7 @@ class SessionManager:
                 }
             })
             
-            logging.info(f"Nova sessão criada para bot {bot_id}")
+            logging.info(f"Nova sessão criada para bot {bot_id} com proxy {proxy}")
         return self.sessions[bot_id]
     
     def get_fingerprint(self, bot_id: int) -> Dict[str, str]:
@@ -82,21 +80,24 @@ class SessionManager:
         """
         return self.fingerprints.get(bot_id)
     
-    def create_session(self, proxy: str = None) -> requests.Session:
+    def create_session(self, proxy: str) -> requests.Session:
         """
-        Cria uma nova sessão com configurações personalizadas.
+        Cria uma nova sessão com proxy obrigatório.
         """
+        if not proxy:
+            raise ValueError("Proxy é obrigatório para criar uma sessão")
+        
         session = requests.Session()
         
-        if proxy:
-            session.proxies = {
-                'http': proxy,
-                'https': proxy
-            }
+        # Configura o proxy
+        session.proxies = {
+            'http': proxy,
+            'https': proxy
+        }
         
         # Desativa verificação SSL
         session.verify = False
-        session.trust_env = False
+        session.trust_env = False  # Impede uso de variáveis de ambiente (evita uso de proxy do sistema)
         session.timeout = (5, 10)
         
         # Suprime avisos SSL

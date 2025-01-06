@@ -98,23 +98,25 @@ class ProxyManager:
 
     def get_proxy(self, bot_id: int) -> Optional[str]:
         """
-        Obtém um proxy único para um bot.
+        Obtém um proxy único para um bot. Continua tentando até encontrar um proxy válido.
         """
         with self.lock:
             if bot_id in self.bot_proxies:
                 return self.format_proxy(self.bot_proxies[bot_id])
 
-            available_proxies = [p for p in self.proxies if p not in self.used_proxies]
-            
-            if not available_proxies:
-                logger.warning("Resetando lista de proxies usados")
-                self.used_proxies.clear()
-                available_proxies = self.proxies
-
-            for _ in range(5):
+            while True:  # Loop infinito até encontrar um proxy válido
+                available_proxies = [p for p in self.proxies if p not in self.used_proxies]
+                
                 if not available_proxies:
-                    break
-                    
+                    logger.warning("Resetando lista de proxies usados")
+                    self.used_proxies.clear()
+                    available_proxies = self.proxies
+
+                if not available_proxies:
+                    logger.error("Nenhum proxy disponível. Aguardando 5 segundos...")
+                    time.sleep(5)
+                    continue
+
                 proxy = random.choice(available_proxies)
                 available_proxies.remove(proxy)
                 
@@ -129,9 +131,9 @@ class ProxyManager:
                         }
                     })
                     return self.format_proxy(proxy)
-
-            logger.error(f"Não foi possível encontrar proxy válido para bot {bot_id}")
-            return None
+                
+                logger.warning(f"Proxy {proxy} inválido, tentando outro...")
+                time.sleep(2)  # Pequena pausa antes de tentar outro proxy
 
     def release_proxy(self, bot_id: int):
         """Libera o proxy usado por um bot."""
