@@ -1,7 +1,8 @@
 {
     "channels": [
-        "gaules"
+        "seriesfilmes28"
     ],
-    "bots": 15,
+    "bots": 15, 
     "ads_limit": 150
+
 }

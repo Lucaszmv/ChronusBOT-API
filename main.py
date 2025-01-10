@@ -259,15 +259,11 @@ def setup_new_session(bot_id: int, channel: str) -> bool:
         # Obtém novo token para o novo canal
         token_data = obter_playback_access_token(channel, fingerprint, bot_id)
         if token_data:
-            logger.info(f"BOT {bot_id}: Novo token obtido para canal {channel}")
-            
-            # Atualiza o status e IP somente após obter o token com sucesso
+            # Atualiza o status para ONLINE somente após obter token com sucesso
             with stats_lock:
                 for bot in bot_stats:
                     if bot['id'] == bot_id:
                         bot['status'] = 'ONLINE'
-                        # O IP será atualizado automaticamente pela função update_menu
-                        # quando a conexão estiver estabelecida
                         break
             return True
         else:
@@ -651,11 +647,162 @@ def update_bot_status(bot_id: int, status: str):
         for bot in bot_stats:
             if bot['id'] == bot_id:
                 bot['status'] = status
+                bot['last_status_change'] = time.time()  # Adiciona timestamp da mudança
                 break
 
 def add_bot_event(bot_id: int, message: str, event_type: str = 'info'):
     """Adiciona um evento ao menu."""
     menu.add_event(bot_id, message, event_type)
+
+def monitor_bots_health():
+    """Thread para monitorar a saúde dos bots e reiniciar os que estiverem travados."""
+    while not should_stop.is_set():
+        try:
+            with stats_lock:
+                current_time = time.time()
+                for bot in bot_stats:
+                    if 'last_status_change' not in bot:
+                        bot['last_status_change'] = current_time
+                        continue
+
+                    status_duration = current_time - bot['last_status_change']
+                    
+                    # Se estiver em RECONECT por mais de 2 minutos
+                    if bot['status'] == 'RECONECT' and status_duration > 120:
+                        logger.warning(f"BOT {bot['id']}: Preso em RECONECT por {int(status_duration)}s, forçando reinício")
+                        force_bot_restart(bot['id'])
+                    
+                    # Se estiver em ERRO ou outro status problemático por mais de 2 minutos
+                    elif bot['status'] in ['ERRO', 'DESCONECTADO'] and status_duration > 120:
+                        logger.warning(f"BOT {bot['id']}: Em {bot['status']} por {int(status_duration)}s, verificando estado")
+                        check_bot_state(bot['id'])
+                    
+                    # Se estiver ONLINE, apenas verifica a cada 10 minutos
+                    elif bot['status'] == 'ONLINE' and status_duration > 600:
+                        logger.info(f"BOT {bot['id']}: Verificação de rotina após {int(status_duration)}s")
+                        check_bot_state(bot['id'])
+                        
+                    # NOVO: Se estiver com "Waiting IP..." por mais de 4 minutos
+                    elif bot.get('user_ip') == 'Waiting IP...' and status_duration > 240:
+                        logger.warning(f"BOT {bot['id']}: Preso em 'Waiting IP...' por {int(status_duration)}s, forçando reinício")
+                        force_bot_restart(bot['id'])
+
+            time.sleep(30)  # Verifica a cada 30 segundos
+            
+        except Exception as e:
+            logger.error(f"Erro no monitor de saúde: {str(e)}")
+            time.sleep(5)
+
+def force_bot_restart(bot_id: int):
+    """Força o reinício de um bot travado."""
+    try:
+        # Fecha a sessão atual
+        session_manager.close_session(bot_id)
+        
+        # Atualiza status do bot
+        with stats_lock:
+            for bot in bot_stats:
+                if bot['id'] == bot_id:
+                    bot['status'] = 'RECONECT'
+                    bot['last_status_change'] = time.time()
+                    bot['user_ip'] = 'Waiting IP...'
+                    break
+        
+        # Força uma nova sessão com novo proxy
+        if setup_new_session(bot_id, bot['channel']):
+            logger.info(f"BOT {bot_id}: Reiniciado com sucesso")
+        else:
+            logger.error(f"BOT {bot_id}: Falha ao reiniciar")
+            
+    except Exception as e:
+        logger.error(f"Erro ao forçar reinício do bot {bot_id}: {str(e)}")
+
+def check_bot_state(bot_id: int):
+    """Verifica o estado atual do bot e toma ação se necessário."""
+    try:
+        with stats_lock:
+            bot_info = next((bot for bot in bot_stats if bot['id'] == bot_id), None)
+            if not bot_info:
+                return
+
+            # 1. Verifica se a sessão existe
+            session = session_manager.get_session(bot_id)
+            if not session:
+                logger.warning(f"BOT {bot_id}: Sessão inexistente, forçando reinício")
+                force_bot_restart(bot_id)
+                return
+
+            # 2. Verifica se o token ainda é válido
+            if not verify_token_valid(bot_id):
+                logger.warning(f"BOT {bot_id}: Token expirado, forçando reinício")
+                force_bot_restart(bot_id)
+                return
+
+            # 3. Testa conectividade do proxy
+            try:
+                response = session.get('https://www.google.com', timeout=5)
+                if response.status_code != 200:
+                    raise Exception("Falha na conexão")
+            except:
+                logger.warning(f"BOT {bot_id}: Falha na verificação de conexão, forçando reinício")
+                force_bot_restart(bot_id)
+                return
+
+            # 4. Verifica se consegue obter a playlist
+            try:
+                playlist = obter_playlist_m3u8(bot_info['channel'], session, bot_id)
+                if not playlist:
+                    logger.warning(f"BOT {bot_id}: Falha ao obter playlist, forçando reinício")
+                    force_bot_restart(bot_id)
+                    return
+            except:
+                logger.warning(f"BOT {bot_id}: Erro ao obter playlist, forçando reinício")
+                force_bot_restart(bot_id)
+                return
+
+            # 5. Verifica se consegue baixar um segmento de teste
+            try:
+                segments = playlist.segments[:1]  # Pega primeiro segmento para teste
+                if segments and not test_segment_download(segments[0], session, bot_id):
+                    logger.warning(f"BOT {bot_id}: Falha ao baixar segmento, forçando reinício")
+                    force_bot_restart(bot_id)
+                    return
+            except:
+                logger.warning(f"BOT {bot_id}: Erro ao testar download de segmento, forçando reinício")
+                force_bot_restart(bot_id)
+                return
+
+            # Se chegou aqui, passou em todas as verificações
+            bot_info['last_status_change'] = time.time()
+            if bot_info['status'] != 'ONLINE':
+                bot_info['status'] = 'ONLINE'
+                logger.info(f"BOT {bot_id}: Restaurado para ONLINE após todas as verificações")
+
+    except Exception as e:
+        logger.error(f"Erro ao verificar estado do bot {bot_id}: {str(e)}")
+        force_bot_restart(bot_id)
+
+def test_segment_download(segment, session, bot_id: int) -> bool:
+    """Testa o download de um segmento."""
+    try:
+        response = session.get(segment.uri, timeout=5)
+        return response.status_code == 200 and len(response.content) > 0
+    except:
+        return False
+
+def verify_token_valid(bot_id: int) -> bool:
+    """Verifica se o token do bot ainda é válido."""
+    try:
+        session = session_manager.get_session(bot_id)
+        if not session or not session.token_data:
+            return False
+            
+        # Verifica se o token expirou (normalmente 1 hora)
+        token_age = time.time() - session.token_timestamp
+        return token_age < 3300  # 55 minutos (dá margem de segurança antes da 1 hora)
+        
+    except Exception:
+        return False
 
 def main():
     global limite_anuncios_global
@@ -689,7 +836,12 @@ def main():
                 menu_thread = threading.Thread(target=update_menu)
                 menu_thread.daemon = True
                 menu_thread.start()
-                
+
+                # Inicia thread de monitoramento de saúde
+                health_monitor = threading.Thread(target=monitor_bots_health)
+                health_monitor.daemon = True
+                health_monitor.start()
+
                 # Iniciar múltiplos bots em threads
                 with ThreadPoolExecutor(max_workers=num_bots) as executor:
                     futures = [executor.submit(bot_worker, canal_nome, bot_id) 

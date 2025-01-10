@@ -123,13 +123,6 @@ class ProxyManager:
                 if self.test_proxy(proxy):
                     self.bot_proxies[bot_id] = proxy
                     self.used_proxies.add(proxy)
-                    logger.info("", extra={
-                        'proxy_allocation': {
-                            'bot_id': bot_id,
-                            'proxy': proxy,
-                            'pool_size': len(self.proxies) - len(self.used_proxies)
-                        }
-                    })
                     return self.format_proxy(proxy)
                 
                 logger.warning(f"Proxy {proxy} inválido, tentando outro...")
