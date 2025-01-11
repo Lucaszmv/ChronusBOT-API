@@ -41,6 +41,9 @@ WAIT_TIME = lambda: random.uniform(0.10, 0.20)
 # Conjunto para armazenar os segmentos já baixados
 segmentos_baixados = set()
 
+# Fila para garantir ordem sequencial dos segmentos
+segmentos_fila = deque(maxlen=100)
+
 logger = logging.getLogger(__name__)
 
 def simular_download_segmento(url, bot_id=None):
@@ -58,6 +61,17 @@ def simular_download_segmento(url, bot_id=None):
             return False
             
         url = url[inicio:]
+        
+        # Verifica se é o próximo segmento na sequência
+        if len(segmentos_fila) > 0 and url != segmentos_fila[0]:
+            logger.warning(f"BOT {bot_id}: Segmento fora de ordem, aguardando...")
+            return False
+            
+        # Se já baixou, não precisa baixar novamente
+        if url in segmentos_baixados:
+            segmentos_fila.popleft()  # Remove da fila pois já foi processado
+            return True
+            
         session = session_manager.get_session(bot_id) if bot_id else requests.Session()
         fingerprint = session_manager.get_fingerprint(bot_id) if bot_id else {}
         
@@ -75,8 +89,12 @@ def simular_download_segmento(url, bot_id=None):
             'User-Agent': fingerprint.get('User-Agent')
         }
 
-        response = session.head(url, headers=headers, timeout=5)
-        return response.status_code == 200
+        response = session.get(url, headers=headers, timeout=5)
+        if response.status_code == 200:
+            segmentos_baixados.add(url)
+            segmentos_fila.popleft()  # Remove da fila após download bem sucedido
+            return True
+        return False
 
     except Exception as e:
         logger.error(f"BOT {bot_id}: Erro ao baixar segmento: {str(e)}")
@@ -87,7 +105,9 @@ def simular_download_segmento(url, bot_id=None):
 
 def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     """Processa a fila de download de segmentos."""
-    segmentos_processados = 0
+    # Tempos de espera base (em segundos)
+    WAIT_NORMAL = lambda: random.uniform(0.10, 0.20)
+    WAIT_FAST = lambda: random.uniform(0.02, 0.05)  # Tempo reduzido quando a fila está cheia
     
     while True:
         queue_size = len(fila_segmentos)
@@ -96,17 +116,22 @@ def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
             time.sleep(0.5)
             continue
 
+        # Determina o tempo de espera baseado no tamanho da fila
+        if queue_size > 50:  # 50% da capacidade
+            logger.warning(f"BOT {bot_id}: Fila com {queue_size} segmentos. Acelerando downloads...")
+            wait_time = WAIT_FAST()
+        else:
+            wait_time = WAIT_NORMAL()
+            
         url = fila_segmentos[0]
         success = simular_download_segmento(url, bot_id)
         
         if success:
             segmentos_baixados.add(url)
             fila_segmentos.popleft()
-            segmentos_processados += 1
         else:
             time.sleep(1)
 
-        wait_time = WAIT_TIME()
         time.sleep(wait_time)
 
 def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
@@ -115,3 +140,8 @@ def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
     thread_downloader = threading.Thread(target=processar_fila_download, args=(fila_segmentos, bot_id))
     thread_downloader.daemon = True
     thread_downloader.start()
+
+def adicionar_segmento_fila(url):
+    """Adiciona um novo segmento à fila para download."""
+    if url not in segmentos_baixados and url not in segmentos_fila:
+        segmentos_fila.append(url)
