@@ -136,7 +136,7 @@ def exibir_playlist_atualizada(playlist: str, max_linhas: int = 10) -> None:
     pass
 
 def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, limite_anuncios: int = None, check_limit_callback=None):
-    """Atualiza continuamente a playlist e adiciona novos segmentos à fila."""
+    """Atualiza a playlist e gerencia os segmentos."""
     fingerprint = session_manager.get_fingerprint(bot_id)
     segmentos_conhecidos = set()
     ultima_playlist = ""
@@ -147,8 +147,9 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                                    bot_id=bot_id)
 
     fila_vazia_inicio = None
-    TEMPO_MAXIMO_FILA_VAZIA = 30
+    TEMPO_MAXIMO_FILA_VAZIA = 10  # Reduzido para 10 segundos
     tentativas_recuperacao = 0
+    TEMPO_ESPERA_ENTRE_TENTATIVAS = 2
     MAX_TENTATIVAS_RECUPERACAO = 3
     
     def tentar_recuperar_playlist():
@@ -211,66 +212,56 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     
     while True:
         try:
-            # Verifica se a fila está vazia
-            if len(fila_segmentos) == 0:
-                if fila_vazia_inicio is None:
-                    fila_vazia_inicio = time.time()
-                elif time.time() - fila_vazia_inicio > TEMPO_MAXIMO_FILA_VAZIA:
-                    if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:
-                        tentativas_recuperacao += 1
-                        if tentar_recuperar_playlist():
-                            fila_vazia_inicio = None
-                            tentativas_recuperacao = 0
-                            continue
-                        else:
-                            time.sleep(2)
-                            continue
-                    return False
-            else:
-                fila_vazia_inicio = None
-                tentativas_recuperacao = 0
-
             # Adquire permissão para atualizar playlist
             if not rate_limiter.acquire(bot_id, 'playlist'):
-                time.sleep(2)
+                time.sleep(1)
                 continue
                 
+            # Obtém a playlist de qualidade
             playlist_qualidade = obter_playlist_qualidade(link_qualidade, fingerprint, bot_id)
             if not playlist_qualidade:
-                time.sleep(2)
+                logger.error(f"BOT {bot_id}: Falha ao obter playlist de qualidade")
+                time.sleep(TEMPO_ESPERA_ENTRE_TENTATIVAS)
                 continue
 
-            # Processar playlist para detectar anúncios
-            ad_result = ad_detector.process_playlist(playlist_qualidade)
-            
-            # Se o detector indicar mudança de canal, propaga o retorno
-            if isinstance(ad_result, int) and ad_result == 2:
-                return 2
-            elif ad_result is True:
-                return True
-            
+            # Extrai e adiciona novos segmentos
             novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
-            if not novos_segmentos:
-                time.sleep(2)
-                continue
-
-            if playlist_qualidade != ultima_playlist:
+            if novos_segmentos:
                 segmentos_adicionados = 0
                 for segmento in novos_segmentos:
                     if segmento not in segmentos_conhecidos:
                         segmentos_conhecidos.add(segmento)
                         fila_segmentos.append(segmento)
                         segmentos_adicionados += 1
-                        
+                
                 if segmentos_adicionados > 0:
                     ultima_playlist = playlist_qualidade
+                    fila_vazia_inicio = None  # Reset do contador de fila vazia
+                    tentativas_recuperacao = 0
+            else:
+                logger.warning(f"BOT {bot_id}: Nenhum segmento encontrado na playlist")
+
+            # Verifica se a fila está vazia
+            if len(fila_segmentos) == 0:
+                if fila_vazia_inicio is None:
+                    fila_vazia_inicio = time.time()
+                    logger.warning(f"BOT {bot_id}: Fila vazia detectada, iniciando contagem...")
+                elif time.time() - fila_vazia_inicio > TEMPO_MAXIMO_FILA_VAZIA:
+                    logger.error(f"BOT {bot_id}: Fila permaneceu vazia por {TEMPO_MAXIMO_FILA_VAZIA}s")
+                    if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:
+                        tentativas_recuperacao += 1
+                        logger.info(f"BOT {bot_id}: Tentativa de recuperação {tentativas_recuperacao}/{MAX_TENTATIVAS_RECUPERACAO}")
+                        # Força uma nova sessão
+                        session_manager.close_session(bot_id)
+                        time.sleep(TEMPO_ESPERA_ENTRE_TENTATIVAS)
+                        continue
+                    return False
             
-            time.sleep(2)
+            time.sleep(1)  # Reduzido para 1 segundo entre atualizações
 
-        except KeyboardInterrupt:
-            return True
         except Exception as e:
-            time.sleep(2)
-
+            logger.error(f"BOT {bot_id}: Erro ao atualizar playlist: {str(e)}")
+            time.sleep(TEMPO_ESPERA_ENTRE_TENTATIVAS)
+            
         finally:
             rate_limiter.release(bot_id, 'playlist')

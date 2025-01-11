@@ -58,18 +58,14 @@ def simular_download_segmento(url, bot_id=None):
             
         inicio = url.find('https://')
         if inicio == -1 or not url.endswith('.ts'):
+            logger.error(f"BOT {bot_id}: URL inválida: {url}")
             return False
             
         url = url[inicio:]
         
-        # Verifica se é o próximo segmento na sequência
-        if len(segmentos_fila) > 0 and url != segmentos_fila[0]:
-            logger.warning(f"BOT {bot_id}: Segmento fora de ordem, aguardando...")
-            return False
-            
         # Se já baixou, não precisa baixar novamente
         if url in segmentos_baixados:
-            segmentos_fila.popleft()  # Remove da fila pois já foi processado
+            logger.debug(f"BOT {bot_id}: Segmento já baixado: {url}")
             return True
             
         session = session_manager.get_session(bot_id) if bot_id else requests.Session()
@@ -77,23 +73,20 @@ def simular_download_segmento(url, bot_id=None):
         
         headers = {
             'Accept': '*/*',
-            'Accept-Encoding': fingerprint.get('Accept-Encoding'),
-            'Accept-Language': fingerprint.get('Accept-Language'),
-            'Connection': 'keep-alive',
+            'Accept-Encoding': fingerprint.get('Accept-Encoding', 'gzip, deflate, br'),
+            'Accept-Language': fingerprint.get('Accept-Language', 'en-US,en;q=0.9'),
             'Origin': 'https://www.twitch.tv',
-            'Priority': 'u=4',
             'Referer': 'https://www.twitch.tv/',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'cross-site',
             'User-Agent': fingerprint.get('User-Agent')
         }
 
         response = session.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
+            logger.info(f"BOT {bot_id}: Segmento baixado com sucesso: {url}")
             segmentos_baixados.add(url)
-            segmentos_fila.popleft()  # Remove da fila após download bem sucedido
             return True
+            
+        logger.error(f"BOT {bot_id}: Falha ao baixar segmento. Status: {response.status_code}")
         return False
 
     except Exception as e:
@@ -107,32 +100,48 @@ def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     """Processa a fila de download de segmentos."""
     # Tempos de espera base (em segundos)
     WAIT_NORMAL = lambda: random.uniform(0.10, 0.20)
-    WAIT_FAST = lambda: random.uniform(0.02, 0.05)  # Tempo reduzido quando a fila está cheia
+    WAIT_FAST = lambda: random.uniform(0.02, 0.05)
     
     while True:
-        queue_size = len(fila_segmentos)
-        
-        if queue_size == 0:
-            time.sleep(0.5)
-            continue
+        try:
+            # Verifica se a fila está vazia
+            if not fila_segmentos:
+                time.sleep(0.5)
+                continue
 
-        # Determina o tempo de espera baseado no tamanho da fila
-        if queue_size > 50:  # 50% da capacidade
-            logger.warning(f"BOT {bot_id}: Fila com {queue_size} segmentos. Acelerando downloads...")
-            wait_time = WAIT_FAST()
-        else:
-            wait_time = WAIT_NORMAL()
+            # Determina o tempo de espera baseado no tamanho da fila
+            queue_size = len(fila_segmentos)
+            if queue_size > 50:
+                logger.info(f"BOT {bot_id}: Fila com {queue_size} segmentos. Acelerando downloads...")
+                wait_time = WAIT_FAST()
+            else:
+                wait_time = WAIT_NORMAL()
             
-        url = fila_segmentos[0]
-        success = simular_download_segmento(url, bot_id)
-        
-        if success:
-            segmentos_baixados.add(url)
-            fila_segmentos.popleft()
-        else:
-            time.sleep(1)
+            # Tenta obter o primeiro elemento sem removê-lo
+            try:
+                url = fila_segmentos[0]
+            except IndexError:
+                time.sleep(0.5)
+                continue
+                
+            success = simular_download_segmento(url, bot_id)
+            
+            if success:
+                try:
+                    # Remove o elemento apenas se ainda existir e for o mesmo
+                    if fila_segmentos and fila_segmentos[0] == url:
+                        fila_segmentos.popleft()
+                        segmentos_baixados.add(url)
+                except IndexError:
+                    pass
+            else:
+                time.sleep(1)
 
-        time.sleep(wait_time)
+            time.sleep(wait_time)
+            
+        except Exception as e:
+            logger.error(f"BOT {bot_id}: Erro ao processar fila de download: {str(e)}")
+            time.sleep(1)
 
 def iniciar_downloader(fila_segmentos: deque, bot_id: int = None):
     """Inicia o processamento da fila de download em uma thread separada."""
