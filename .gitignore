@@ -1,7 +1,8 @@
 # Arquivos e diretórios Python
 __pycache__/
 *.py[cod]
-*$py.class*.so
+*$py.class
+*.so
 .Python
 build/
 develop-eggs/
