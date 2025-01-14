@@ -92,6 +92,9 @@ def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     while True:
         queue_size = len(fila_segmentos)
         
+        # Log do tamanho da fila e total de segmentos baixados
+        logger.info(f"BOT {bot_id}: Fila atual: {queue_size} segmentos | Total baixado: {segmentos_processados}")
+        
         if queue_size == 0:
             time.sleep(0.5)
             continue

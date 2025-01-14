@@ -211,6 +211,9 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     
     while True:
         try:
+            # Log do tamanho atual da fila
+            logger.info(f"BOT {bot_id}: Tamanho atual da fila: {len(fila_segmentos)} segmentos")
+            
             # Verifica se a fila está vazia
             if len(fila_segmentos) == 0:
                 if fila_vazia_inicio is None:
@@ -264,6 +267,8 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                         
                 if segmentos_adicionados > 0:
                     ultima_playlist = playlist_qualidade
+                    # Log dos segmentos adicionados
+                    logger.info(f"BOT {bot_id}: Adicionados {segmentos_adicionados} novos segmentos | Total na fila: {len(fila_segmentos)}")
             
             time.sleep(2)
 
