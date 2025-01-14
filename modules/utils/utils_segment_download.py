@@ -39,7 +39,7 @@ RESET = Style.RESET_ALL
 WAIT_TIME = lambda: random.uniform(0.10, 0.20) 
 
 # Conjunto para armazenar os segmentos já baixados
-segmentos_baixados = set()
+segmentos_baixados_por_bot = {}
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +87,14 @@ def simular_download_segmento(url, bot_id=None):
 
 def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     """Processa a fila de download de segmentos."""
+    if bot_id not in segmentos_baixados_por_bot:
+        segmentos_baixados_por_bot[bot_id] = set()
+        
     segmentos_processados = 0
     
     while True:
         queue_size = len(fila_segmentos)
         
-        # Log do tamanho da fila e total de segmentos baixados
         logger.info(f"BOT {bot_id}: Fila atual: {queue_size} segmentos | Total baixado: {segmentos_processados}")
         
         if queue_size == 0:
@@ -103,7 +105,7 @@ def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
         success = simular_download_segmento(url, bot_id)
         
         if success:
-            segmentos_baixados.add(url)
+            segmentos_baixados_por_bot[bot_id].add(url)
             fila_segmentos.popleft()
             segmentos_processados += 1
         else:

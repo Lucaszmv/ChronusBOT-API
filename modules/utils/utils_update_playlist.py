@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from collections import deque
 import json
 from modules.utils.utils_rate_limiter import get_rate_limiter
+from modules.utils.utils_segment_download import segmentos_baixados_por_bot
 
 # Inicializa o Colorama
 init()
@@ -260,10 +261,13 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
             if playlist_qualidade != ultima_playlist:
                 segmentos_adicionados = 0
                 for segmento in novos_segmentos:
-                    if segmento not in segmentos_conhecidos:
-                        segmentos_conhecidos.add(segmento)
-                        fila_segmentos.append(segmento)
-                        segmentos_adicionados += 1
+                    # Verifica se o segmento não está nem nos conhecidos nem nos já baixados
+                    if (segmento not in segmentos_conhecidos and 
+                        bot_id not in segmentos_baixados_por_bot or 
+                        segmento not in segmentos_baixados_por_bot[bot_id]):
+                            segmentos_conhecidos.add(segmento)
+                            fila_segmentos.append(segmento)
+                            segmentos_adicionados += 1
                         
                 if segmentos_adicionados > 0:
                     ultima_playlist = playlist_qualidade
