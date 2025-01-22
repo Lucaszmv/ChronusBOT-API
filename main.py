@@ -308,7 +308,9 @@ def bot_worker(canal_nome: str, bot_id: int):
         # Se for o primeiro bot, limpa a tela e mostra a logo
         if bot_id == 1:
             mostrar_cabecalho()
-            print(f"[BOT] Conectado com sucesso na transmissão de {canal_nome} com {config['bots']} Threads.")
+            # Adiciona timestamp na mensagem de conexão com cores
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(f"{Fore.WHITE}[BOT][{timestamp}] {Fore.GREEN}Conectado com sucesso na transmissão de {Fore.WHITE}{canal_nome}{Fore.GREEN} com {Fore.WHITE}{config['bots']}{Fore.GREEN} Threads.{Style.RESET_ALL}")
             print() # Linha em branco para separar
         
         # Primeira configuração da sessão
@@ -343,7 +345,9 @@ def bot_worker(canal_nome: str, bot_id: int):
             proxy_full = session_manager.get_proxy_info(bot_id)
             # Extrai o IP do formato "http://user:pass@IP:PORT" ou "IP:PORT"
             proxy_ip = proxy_full.split('@')[-1].split(':')[0] if '@' in proxy_full else proxy_full.split(':')[0]
-            print(f"[BOT {bot_id}] - Assistindo a transmissão de {canal_nome} com {config['bots']} Threads - {proxy_ip}")
+            # Adiciona timestamp
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(f"{Fore.WHITE}[BOT {bot_id}][{timestamp}] {Fore.MAGENTA}Assistindo a transmissão de {Fore.WHITE}{canal_nome}{Fore.MAGENTA} com {Fore.WHITE}{config['bots']}{Fore.MAGENTA} Threads - {proxy_ip}{Style.RESET_ALL}")
             
             # Agora inicia o loop principal
             while not should_stop.is_set():
