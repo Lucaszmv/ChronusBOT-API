@@ -140,7 +140,9 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
     fingerprint = session_manager.get_fingerprint(bot_id)
     segmentos_conhecidos = set()
     ultima_playlist = ""
-    fila_segmentos = deque(maxlen=100)
+    fila_segmentos = deque(maxlen=1)  # Reduzido para manter apenas 1 segmento
+    ultimo_download = 0  # Timestamp do último download
+    INTERVALO_DOWNLOAD = 10  # Intervalo de 10 segundos entre downloads
     
     ad_detector = create_ad_detector(max_total_ads=limite_anuncios if limite_anuncios else None, 
                                    check_limit_callback=check_limit_callback,
@@ -224,22 +226,24 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                 time.sleep(TEMPO_ESPERA_ENTRE_TENTATIVAS)
                 continue
 
-            # Extrai e adiciona novos segmentos
+            # Extrai segmentos e pega apenas o mais recente
             novos_segmentos = extrair_segmentos_ts(playlist_qualidade)
-            if novos_segmentos:
-                segmentos_adicionados = 0
-                for segmento in novos_segmentos:
-                    if segmento not in segmentos_conhecidos:
-                        segmentos_conhecidos.add(segmento)
-                        fila_segmentos.append(segmento)
-                        segmentos_adicionados += 1
+            tempo_atual = time.time()
+            
+            if novos_segmentos and (tempo_atual - ultimo_download) >= INTERVALO_DOWNLOAD:
+                # Pega apenas o segmento mais recente
+                ultimo_segmento = novos_segmentos[-1]
                 
-                if segmentos_adicionados > 0:
+                if ultimo_segmento not in segmentos_conhecidos:
+                    # Limpa a fila e adiciona apenas o novo segmento
+                    fila_segmentos.clear()
+                    fila_segmentos.append(ultimo_segmento)
+                    segmentos_conhecidos.add(ultimo_segmento)
                     ultima_playlist = playlist_qualidade
-                    fila_vazia_inicio = None  # Reset do contador de fila vazia
+                    fila_vazia_inicio = None
                     tentativas_recuperacao = 0
-            else:
-                logger.warning(f"BOT {bot_id}: Nenhum segmento encontrado na playlist")
+                    ultimo_download = tempo_atual
+                    logger.info(f"BOT {bot_id}: Novo segmento adicionado para download: {ultimo_segmento}")
 
             # Verifica se a fila está vazia
             if len(fila_segmentos) == 0:
@@ -251,13 +255,12 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None, li
                     if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:
                         tentativas_recuperacao += 1
                         logger.info(f"BOT {bot_id}: Tentativa de recuperação {tentativas_recuperacao}/{MAX_TENTATIVAS_RECUPERACAO}")
-                        # Força uma nova sessão
                         session_manager.close_session(bot_id)
                         time.sleep(TEMPO_ESPERA_ENTRE_TENTATIVAS)
                         continue
                     return False
             
-            time.sleep(1)  # Reduzido para 1 segundo entre atualizações
+            time.sleep(1.5)  # Intervalo entre verificações da playlist
 
         except Exception as e:
             logger.error(f"BOT {bot_id}: Erro ao atualizar playlist: {str(e)}")
