@@ -185,30 +185,17 @@ class AdDetector:
         return ad_info
 
     def print_ad_start(self, ad_info: Dict[str, str]):
+        """Exibe mensagem quando um novo anúncio é detectado."""
         pod_length = ad_info.get('X-TV-TWITCH-AD-POD-LENGTH', '?')
         roll_type = ad_info.get('X-TV-TWITCH-AD-ROLL-TYPE', '?')
         ad_format = ad_info.get('X-TV-TWITCH-AD-AD-FORMAT', '?')
-        start_date = ad_info.get('START-DATE', '?')
-
-        print(Fore.YELLOW + f"Novo pod de anúncios detectado: Início: {start_date}, {pod_length} anúncios {roll_type} - Formato: {ad_format}" + Style.RESET_ALL)
-        logger.info(f"Novo pod de anúncios detectado: Início: {start_date}, {pod_length} anúncios {roll_type} - Formato: {ad_format}")
+        
+        print(f"[BOT {self.bot_id}] - {pod_length} Anuncio(s) detectados - {roll_type} - {ad_format}")
 
     def print_ad_viewed_success(self, last_segment: str):
-        """Exibe mensagem de sucesso quando um pod de anúncios é visualizado."""
-        message = f"BOT {self.bot_id}: Pod de anúncios visualizado com sucesso! Último segmento: {last_segment}"
-        print(Fore.GREEN + message + Style.RESET_ALL)
-        logger.info(message)
-
-        total_pods_message = f"BOT {self.bot_id}: Total de pods de anúncios visualizados: {self.total_ad_pods_viewed}"
-        print(Fore.CYAN + total_pods_message + Style.RESET_ALL)
-        logger.info(total_pods_message)
-
-        # Adiciona mensagem mais destacada para o total de anúncios
-        total_ads_message = f"\nBOT {self.bot_id}: >>> Anúncios assistidos no total: {self.total_ads_viewed} <<<"
-        print(Fore.YELLOW + total_ads_message + Style.RESET_ALL)
-        logger.info(f"BOT {self.bot_id}: Anúncios assistidos no total: {self.total_ads_viewed}")
-
-        sys.stdout.flush()
+        """Exibe mensagem quando um pod de anúncios é visualizado."""
+        pod_length = self.current_pod_info.get('X-TV-TWITCH-AD-POD-LENGTH', '?')
+        print(f"[BOT {self.bot_id}] - {pod_length} Anuncio(s) visualizados com sucesso!")
 
     def print_limit_reached(self):
         message = f"Limite de {self.max_total_ads} anúncios atingido. Encerrando o bot."

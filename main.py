@@ -13,7 +13,6 @@ from modules.utils.utils_failure_manager import get_failure_manager
 from modules.utils.utils_bot_monitor import get_bot_monitor, BotStatus
 from modules.core.core_session import session_manager
 from modules.utils.utils_proxy_manager import ProxyManager
-from modules.utils.utils_terminal_menu import create_terminal_menu
 import json
 from pathlib import Path
 import questionary
@@ -42,7 +41,6 @@ limite_anuncios_global = 0
 should_stop = threading.Event()
 
 # Variáveis globais para estatísticas
-menu = create_terminal_menu()
 stats_lock = threading.Lock()
 global_stats = {
     'channels': 0,
@@ -275,54 +273,22 @@ def setup_new_session(bot_id: int, channel: str) -> bool:
 
 def update_menu():
     """Thread para atualizar o menu periodicamente"""
-    monitor = get_bot_monitor()
-    last_update = time.time()
-    last_stats_update = time.time()
-    
     while not should_stop.is_set():
         try:
-            current_time = time.time()
+            # Verifica se o canal está online
+            config = load_config()
+            canal_nome = config['channels'][-1]
             
-            # Atualiza o menu a cada 1 segundo
-            if current_time - last_update >= 1:
-                with stats_lock:
-                    # Atualiza IPs dos bots apenas se não estiverem em RECONECT ou FINALIZADO
-                    for bot in bot_stats:
-                        if bot['status'] not in ['RECONECT', 'FINALIZADO']:
-                            bot_status = monitor.get_bot_status(bot['id'])
-                            if bot_status and bot_status.get('user_ip'):
-                                bot['user_ip'] = bot_status['user_ip']
-                    
-                    # Renderiza o menu
-                    menu.render(global_stats, bot_stats)
-                    last_update = current_time
-            
-            # Atualiza estatísticas globais a cada 5 segundos
-            if current_time - last_stats_update >= 5:
-                with stats_lock:
-                    # Calcula o total de pre/mid rolls de todos os bots
-                    total_preroll = sum(bot_anuncios[bot_id]['preroll'] for bot_id in bot_anuncios)
-                    total_midroll = sum(bot_anuncios[bot_id]['midroll'] for bot_id in bot_anuncios)
-                    
-                    # Atualiza estatísticas globais
-                    config = load_config()
-                    total_channels = len([canal for canal in config['channels'] if canal and isinstance(canal, str)])
-                    
-                    global_stats.update({
-                        'channels': total_channels,
-                        'completed': f"{total_anuncios_global}/{limite_anuncios_global}",
-                        'threads': len(bot_stats),
-                        'proxies': len(ProxyManager().proxies),
-                        'ads_per_hour': f"{total_preroll}/{total_midroll}"
-                    })
-                    last_stats_update = current_time
-            
-            # Pequena pausa para reduzir uso de CPU
-            time.sleep(0.1)
+            if not verificar_canal_online(canal_nome):
+                print(f"\nCanal {canal_nome} está offline. Encerrando bots...")
+                should_stop.set()
+                break
+                
+            time.sleep(30)  # Verifica a cada 30 segundos
             
         except Exception as e:
-            logger.error(f"Erro ao atualizar menu: {str(e)}")
-            time.sleep(1)
+            logger.error(f"Erro ao atualizar status: {str(e)}")
+            time.sleep(5)
 
 def bot_worker(canal_nome: str, bot_id: int):
     """Função que executa o trabalho de cada bot em sua própria thread."""
@@ -333,42 +299,21 @@ def bot_worker(canal_nome: str, bot_id: int):
     
     # Carrega configurações
     config = load_config()
-    ads_limit = config['ads_limit']  # Pega o limite do config.json
+    ads_limit = config['ads_limit']
     
     # Inicializa contadores para este bot
     bot_anuncios[bot_id] = {'preroll': 0, 'midroll': 0}
     
-    # Adiciona estatísticas iniciais do bot
-    with stats_lock:
-        bot_stats.append({
-            'id': bot_id,
-            'status': 'ONLINE',
-            'channel': canal_nome,
-            'ads': '0/0',
-            'uptime': '0h 00m',
-            'start_time': datetime.now(),
-            'user_ip': 'Waiting IP...'
-        })
-    
     try:
-        # Tenta obter uma conta para o bot (se houver disponível)
-        account = auth_mgr.get_account(bot_id)
+        # Se for o primeiro bot, limpa a tela e mostra a logo
+        if bot_id == 1:
+            mostrar_cabecalho()
+            print(f"[BOT] Conectado com sucesso na transmissão de {canal_nome} com {config['bots']} Threads.")
+            print() # Linha em branco para separar
         
-        # Se conseguiu uma conta, tenta conectar ao chat
-        if account:
-            if not chat_mgr.connect_chat(bot_id, canal_nome, account.oauth_token, account.username):
-                logger.error(f"BOT {bot_id}: Falha ao conectar ao chat")
-                auth_mgr.release_account(bot_id)
-            else:
-                logger.info(f"BOT {bot_id}: Conectado ao chat com conta {account.username}")
-        else:
-            logger.info(f"BOT {bot_id}: Operando sem conta")
-            
         # Primeira configuração da sessão
         if not reiniciar_sessao("Iniciando bot", bot_id):
             time.sleep(5)
-            if account:  # Libera a conta apenas se estava usando uma
-                auth_mgr.release_account(bot_id)
             return
             
         # Obtém token
@@ -385,38 +330,44 @@ def bot_worker(canal_nome: str, bot_id: int):
         
         if not token_data:
             logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
-            auth_mgr.release_account(bot_id)
             return
             
-        # Loop principal de atualização
-        while not should_stop.is_set():
-            try:
-                monitor.update_status(bot_id, BotStatus.ASSISTINDO, f"Canal: {canal_nome}")
-                
-                resultado = atualizar_playlist(canal_nome, token_data, bot_id,
-                                          limite_anuncios=ads_limit,  # Usa o limite do config
-                                          check_limit_callback=check_anuncios_limit)
-                
-                if resultado == 2:  # Mudança de canal
-                    update_bot_status(bot_id, 'RECONECT')
-                    add_bot_event(bot_id, "Mudando de canal", 'warning')
-                    session_manager.close_session(bot_id)
-                    break
-                elif resultado is True:  # Limite de anúncios atingido
-                    logger.info(f"BOT {bot_id}: Limite de {ads_limit} anúncios atingido, encerrando...")
-                    should_stop.set()  # Sinaliza para todos os bots pararem
-                    break
-                elif resultado is False:
-                    update_bot_status(bot_id, 'RECONECT')
-                    add_bot_event(bot_id, "Reiniciando sessão", 'warning')
-                    reiniciar_sessao("Fila vazia persistente após tentativas de recuperação", bot_id)
-                    break
-                
-                time.sleep(1)
-                
-            except Exception as e:
-                logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
-                time.sleep(5)
+        # Tenta baixar o primeiro segmento para confirmar que está tudo funcionando
+        resultado = atualizar_playlist(canal_nome, token_data, bot_id, 
+                                     limite_anuncios=ads_limit,
+                                     check_limit_callback=check_anuncios_limit,
+                                     primeiro_segmento=True)
+        
+        if resultado is True:
+            # Obtém o proxy e extrai apenas o IP
+            proxy_full = session_manager.get_proxy_info(bot_id)
+            # Extrai o IP do formato "http://user:pass@IP:PORT" ou "IP:PORT"
+            proxy_ip = proxy_full.split('@')[-1].split(':')[0] if '@' in proxy_full else proxy_full.split(':')[0]
+            print(f"[BOT {bot_id}] - Assistindo a transmissão de {canal_nome} com {config['bots']} Threads - {proxy_ip}")
+            
+            # Agora inicia o loop principal
+            while not should_stop.is_set():
+                try:
+                    resultado = atualizar_playlist(canal_nome, token_data, bot_id,
+                                              limite_anuncios=ads_limit,
+                                              check_limit_callback=check_anuncios_limit)
+                    
+                    if resultado == 2:  # Mudança de canal
+                        session_manager.close_session(bot_id)
+                        break
+                    elif resultado is True:  # Limite de anúncios atingido
+                        logger.info(f"BOT {bot_id}: Limite de {ads_limit} anúncios atingido, encerrando...")
+                        should_stop.set()  # Sinaliza para todos os bots pararem
+                        break
+                    elif resultado is False:
+                        reiniciar_sessao("Fila vazia persistente após tentativas de recuperação", bot_id)
+                        break
+                    
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    logger.error(f"BOT {bot_id}: Erro na atualização: {str(e)}")
+                    time.sleep(5)
                 
     except Exception as e:
         logger.error(f"BOT {bot_id}: Erro: {str(e)}")
@@ -641,19 +592,6 @@ def reiniciar_sessao(motivo: str, bot_id: int = None) -> bool:
         logger.error(f"BOT {bot_id}: Erro ao reiniciar sessão: {str(e)}")
         return False
 
-def update_bot_status(bot_id: int, status: str):
-    """Atualiza o status do bot no menu."""
-    with stats_lock:
-        for bot in bot_stats:
-            if bot['id'] == bot_id:
-                bot['status'] = status
-                bot['last_status_change'] = time.time()  # Adiciona timestamp da mudança
-                break
-
-def add_bot_event(bot_id: int, message: str, event_type: str = 'info'):
-    """Adiciona um evento ao menu."""
-    menu.add_event(bot_id, message, event_type)
-
 def monitor_bots_health():
     """Thread para monitorar a saúde dos bots e reiniciar os que estiverem travados."""
     while not should_stop.is_set():
@@ -832,11 +770,6 @@ def main():
                     input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
                     continue
                 
-                # Inicia thread do menu
-                menu_thread = threading.Thread(target=update_menu)
-                menu_thread.daemon = True
-                menu_thread.start()
-
                 # Inicia thread de monitoramento de saúde
                 health_monitor = threading.Thread(target=monitor_bots_health)
                 health_monitor.daemon = True
