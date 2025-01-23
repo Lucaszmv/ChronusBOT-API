@@ -10,10 +10,9 @@ import requests
 from pathlib import Path
 from typing import Dict
 from colorama import Fore, Style, init
-from modules.utils.utils_logger import get_logger
 from modules.utils.utils_proxy_manager import ProxyManager
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -65,7 +64,7 @@ class SessionManager:
                 }
             })
             
-            logging.info(f"Nova sessão criada para bot {bot_id} com proxy {proxy}")
+            logger.info(f"Nova sessão criada para bot {bot_id} com proxy {proxy}", extra={'terminal': False})
         return self.sessions[bot_id]
     
     def get_fingerprint(self, bot_id: int) -> Dict[str, str]:

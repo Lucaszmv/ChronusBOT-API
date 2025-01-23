@@ -90,7 +90,8 @@ class AdaptiveRateLimiter:
             
             logger.info(
                 f"Limites ajustados para {num_bots} bots - "
-                f"Playlist: {playlist_limit}, Segmentos: {segment_limit}"
+                f"Playlist: {playlist_limit}, Segmentos: {segment_limit}",
+                extra={'terminal': False}
             )
     
     def register_bot(self, bot_id: int):

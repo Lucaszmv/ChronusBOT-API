@@ -13,92 +13,57 @@ import time
 # Inicializa o Colorama
 init()
 
-# Configurações de cores para o terminal
-INFO_COLOR = Fore.CYAN
-SUCCESS_COLOR = Fore.GREEN
-WARNING_COLOR = Fore.YELLOW
-ERROR_COLOR = Fore.RED
-RESET = Style.RESET_ALL
-
-class ProxyFilter(logging.Filter):
-    def filter(self, record):
-        return 'proxy' in record.name.lower()
-        
-class SessionFilter(logging.Filter):
-    def filter(self, record):
-        return (hasattr(record, 'session_details') or 
-                hasattr(record, 'request_details') or 
-                hasattr(record, 'playlist_details') or
-                hasattr(record, 'segment_details'))
-
 class FileFormatter(logging.Formatter):
     """Formatador para arquivos de log."""
     
     def __init__(self):
         super().__init__()
-        self.fmt = (
-            "[%(asctime)s] "
-            "%(levelname)-8s "
-            "%(message)s"
-        )
+        self.fmt = '%(asctime)s - %(levelname)s - %(message)s'
         self.datefmt = '%Y-%m-%d %H:%M:%S'
 
     def format(self, record):
-        # Formata a mensagem com base no tipo de log
-        if hasattr(record, 'token_response'):
-            # Log específico para resposta do token
-            record.msg = (
-                f"\nTOKEN RESPONSE - BOT {record.bot_id}:\n"
-                f"Response: {record.token_response}\n"
-                f"Extracted IP: {record.user_ip}\n"
-                f"{'='*80}"
+        # Remove mensagens vazias
+        if not record.msg.strip():
+            return ""
+            
+        # Formata a mensagem com base no tipo
+        if hasattr(record, 'session_details'):
+            details = record.session_details
+            return (
+                f"{self.formatTime(record)} - INFO - Nova sessão criada para bot {details['bot_id']} "
+                f"com proxy {details['proxy']}"
             )
+            
+        elif hasattr(record, 'token_response'):
+            return (
+                f"{self.formatTime(record)} - INFO - BOT {record.bot_id}: "
+                f"Token obtido - IP: {record.user_ip}"
+            )
+            
         elif hasattr(record, 'ip_update'):
-            # Log específico para atualização de IP
-            record.msg = (
-                f"BOT {record.bot_id}: "
-                f"IP Update - Previous: {record.previous_ip}, "
-                f"New: {record.new_ip}"
+            return (
+                f"{self.formatTime(record)} - INFO - BOT {record.bot_id}: "
+                f"IP atualizado: {record.new_ip}"
             )
-        
+            
+        elif hasattr(record, 'session_restart'):
+            details = record.session_restart
+            return (
+                f"{self.formatTime(record)} - WARNING - BOT {details['bot_id']}: "
+                f"Reiniciando sessão - Motivo: {details['reason']}"
+            )
+            
+        # Mensagens padrão
+        if record.levelname == 'INFO' and 'Limites ajustados' in record.msg:
+            return (
+                f"{self.formatTime(record)} - INFO - {record.msg}"
+            )
+            
+        # Remove mensagens de debug e logs vazios
+        if record.levelname == 'DEBUG' or not record.msg.strip():
+            return ""
+            
         return super().format(record)
-
-class ConsoleFormatter(logging.Formatter):
-    """Mantém o formato original para console com cores."""
-    
-    def format(self, record):
-        # Não exibe nenhuma mensagem no console
-        return ""
-
-class ProxyFormatter(logging.Formatter):
-    """Formatador específico para logs de proxy."""
-    
-    def __init__(self):
-        super().__init__()
-    
-    def format(self, record):
-        if hasattr(record, 'proxy_load'):
-            details = record.proxy_load
-            return (
-                f"\n{'='*82}\n"
-                f"SISTEMA DE PROXY INICIADO\n"
-                f"{'='*82}\n"
-                f"Total de Proxies Carregados: {details.get('total_proxies')}\n"
-                f"Arquivo: {details.get('proxy_file')}\n"
-                f"{'='*82}\n"
-            )
-        elif hasattr(record, 'proxy_allocation'):
-            details = record.proxy_allocation
-            return (
-                f"{'='*82}\n"
-                f"{datetime.now().strftime('%H:%M:%S')} | "
-                f"INFO    | BOT {details.get('bot_id')} usando proxy: {details.get('proxy')}\n"
-                f"Proxies Disponíveis: {details.get('pool_size')}\n"
-                f"{'='*82}"
-            )
-        elif record.msg:
-            return record.msg
-        return ""
 
 class LoggerManager:
     """Gerenciador centralizado de logs do sistema."""
@@ -118,28 +83,13 @@ class LoggerManager:
 
     def setup_logging(self):
         """Configura o sistema de logging."""
-        # Cria pasta da sessão
+        # Cria pasta de logs
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_dir = Path(__file__).parent.parent.parent / 'logs' / f'session_{timestamp}'
+        log_dir = Path(__file__).parent.parent.parent / 'logs'
         log_dir.mkdir(parents=True, exist_ok=True)
         
-        # Arquivo de sessão
-        session_handler = logging.FileHandler(
-            log_dir / 'session.log',
-            mode='a',
-            encoding='utf-8'
-        )
-        session_handler.setFormatter(FileFormatter())
-        session_handler.setLevel(logging.INFO)
-        
-        # Arquivo de proxy
-        proxy_handler = logging.FileHandler(
-            log_dir / 'proxy.log',
-            mode='a',
-            encoding='utf-8'
-        )
-        proxy_handler.setFormatter(FileFormatter())
-        proxy_handler.setLevel(logging.INFO)
+        # Arquivo único de log
+        log_file = log_dir / f'chronus_{timestamp}.log'
         
         # Configura logger raiz
         root_logger = logging.getLogger()
@@ -149,9 +99,21 @@ class LoggerManager:
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
         
-        # Adiciona os novos handlers
-        root_logger.addHandler(session_handler)
-        root_logger.addHandler(proxy_handler)
+        # Handler para arquivo
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setFormatter(FileFormatter())
+        root_logger.addHandler(file_handler)
+        
+        # Handler para console com filtro
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter('%(message)s'))
+        
+        class TerminalFilter(logging.Filter):
+            def filter(self, record):
+                return not (hasattr(record, 'terminal') and record.terminal is False)
+                
+        console_handler.addFilter(TerminalFilter())
+        root_logger.addHandler(console_handler)
         
         return log_dir
 
