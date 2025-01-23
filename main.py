@@ -31,6 +31,30 @@ WARNING_COLOR = Fore.YELLOW
 ERROR_COLOR = Fore.RED
 RESET = Style.RESET_ALL
 
+# Modificar a configuração do logger no início do arquivo
+def get_logger(name):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    
+    # Handler para arquivo - mantém todos os logs
+    file_handler = logging.FileHandler(f'logs/{name}.log')
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(file_handler)
+    
+    # Handler para console - filtra mensagens com terminal=False
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    
+    class TerminalFilter(logging.Filter):
+        def filter(self, record):
+            # Retorna False se o registro tiver terminal=False
+            return not (hasattr(record, 'terminal') and record.terminal is False)
+            
+    console_handler.addFilter(TerminalFilter())
+    logger.addHandler(console_handler)
+    
+    return logger
+
 # Criar logger para o módulo main
 logger = get_logger(__name__)
 

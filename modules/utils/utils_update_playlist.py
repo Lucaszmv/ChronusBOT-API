@@ -283,13 +283,21 @@ def atualizar_playlist(canal_nome: str, token_data: dict, bot_id: int = None,
                     fila_vazia_inicio = None
                     tentativas_recuperacao = 0
                     ultimo_download = tempo_atual
-                    logger.info(f"BOT {bot_id}: Novo segmento adicionado para download: {ultimo_segmento}")
+                    # Extrair apenas os últimos caracteres antes do .ts
+                    segment_name = ultimo_segmento.split('/')[-1]
+                    segment_name = segment_name.split('.ts')[0][-80:] + '.ts'
+                    # Adiciona timestamp
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    print(f"[BOT {bot_id}][{timestamp}] Novo segmento adicionado para download: {segment_name}")
+                    
+                    # Remove o logger.info e usa apenas o logger.debug para o log completo
+                    logger.debug(f"BOT {bot_id}: Novo segmento adicionado para download: {ultimo_segmento}")
 
             # Verifica se a fila está vazia
             if len(fila_segmentos) == 0:
                 if fila_vazia_inicio is None:
                     fila_vazia_inicio = time.time()
-                    logger.warning(f"BOT {bot_id}: Fila vazia detectada, iniciando contagem...")
+                    logger.debug(f"BOT {bot_id}: Fila vazia detectada, iniciando contagem...")  # Mudado para debug
                 elif time.time() - fila_vazia_inicio > TEMPO_MAXIMO_FILA_VAZIA:
                     logger.error(f"BOT {bot_id}: Fila permaneceu vazia por {TEMPO_MAXIMO_FILA_VAZIA}s")
                     if tentativas_recuperacao < MAX_TENTATIVAS_RECUPERACAO:

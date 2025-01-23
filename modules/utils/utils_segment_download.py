@@ -82,7 +82,14 @@ def simular_download_segmento(url, bot_id=None):
 
         response = session.get(url, headers=headers, timeout=5)
         if response.status_code == 200:
-            logger.info(f"BOT {bot_id}: Segmento baixado com sucesso: {url}")
+            # Extrair apenas o nome do arquivo do segmento
+            segment_name = url.split('/')[-1].split('?')[0]
+            segment_name = segment_name.split('.ts')[0][-80:] + '.ts'
+            # Adiciona timestamp
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(f"[BOT {bot_id}][{timestamp}] Segmento baixado com sucesso: {segment_name}")
+            # Log completo vai para o arquivo
+            logger.debug(f"BOT {bot_id}: Segmento baixado com sucesso: {url}")
             segmentos_baixados.add(url)
             return True
             
