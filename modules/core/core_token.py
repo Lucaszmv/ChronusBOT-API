@@ -11,9 +11,8 @@ import logging
 from typing import Dict, Optional
 import time
 from modules.utils.utils_rate_limiter import get_rate_limiter
-from modules.utils.utils_logger import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Adiciona o diretório raiz do projeto ao PYTHONPATH
 root_dir = str(Path(__file__).parent.parent.parent)
@@ -96,7 +95,7 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: in
         response = session.post(url, headers=headers, json=payload)
         response_text = response.text
         
-        logger.info(f"BOT {bot_id}: Token Response: {response_text[:500]}")  # Log primeiros 500 chars
+        logger.info(f"BOT {bot_id}: Token Response: {response_text}", extra={'terminal': False})
         
         response.raise_for_status()
         data = response.json()
@@ -119,6 +118,8 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: in
                     from modules.utils.utils_bot_monitor import get_bot_monitor
                     monitor = get_bot_monitor()
                     monitor.update_bot_ip(bot_id, user_ip)
+                
+                logger.info(f"\nTOKEN RESPONSE - BOT {bot_id}:\nResponse: {token_data}\nExtracted IP: {user_ip}\n{'='*80}\n", extra={'terminal': False})
                 
             except Exception as e:
                 logger.error(f"BOT {bot_id}: Token parsing error: {str(e)}")

@@ -125,7 +125,7 @@ class ProxyManager:
                     self.used_proxies.add(proxy)
                     return self.format_proxy(proxy)
                 
-                logger.warning(f"Proxy {proxy} inválido, tentando outro...")
+                logger.warning(f"Proxy {proxy} inválido, tentando outro...", extra={'terminal': False})
                 time.sleep(2)  # Pequena pausa antes de tentar outro proxy
 
     def release_proxy(self, bot_id: int):
