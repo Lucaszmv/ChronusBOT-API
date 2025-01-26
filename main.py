@@ -6,7 +6,6 @@ import time
 from collections import deque
 import threading
 from colorama import Fore, Style, init
-from modules.utils.utils_logger import get_logger
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from modules.utils.utils_failure_manager import get_failure_manager
@@ -31,15 +30,27 @@ WARNING_COLOR = Fore.YELLOW
 ERROR_COLOR = Fore.RED
 RESET = Style.RESET_ALL
 
-# Modificar a configuração do logger no início do arquivo
-def get_logger(name):
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+def setup_global_logger():
+    """Configura um logger global único para todo o programa"""
+    # Cria o diretório de logs se não existir
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
     
-    # Handler para arquivo - mantém todos os logs
-    file_handler = logging.FileHandler(f'logs/{name}.log')
+    # Remove TODOS os handlers existentes do logger raiz
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()  # Limpa todos os handlers
+    
+    # Cria um nome de arquivo baseado na data/hora atual
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"chronus_{timestamp}.log"
+    
+    # Configura o logger raiz
+    root_logger.setLevel(logging.INFO)
+    
+    # Handler para arquivo único - mantém todos os logs
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
     file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(file_handler)
+    root_logger.addHandler(file_handler)
     
     # Handler para console - filtra mensagens com terminal=False
     console_handler = logging.StreamHandler()
@@ -47,16 +58,15 @@ def get_logger(name):
     
     class TerminalFilter(logging.Filter):
         def filter(self, record):
-            # Retorna False se o registro tiver terminal=False
             return not (hasattr(record, 'terminal') and record.terminal is False)
             
     console_handler.addFilter(TerminalFilter())
-    logger.addHandler(console_handler)
+    root_logger.addHandler(console_handler)
     
-    return logger
+    return root_logger
 
-# Criar logger para o módulo main
-logger = get_logger(__name__)
+# Configura o logger global ANTES de importar outros módulos
+logger = setup_global_logger()
 
 # Lock global para contagem de anúncios
 anuncios_lock = Lock()
@@ -603,7 +613,14 @@ def mostrar_cabecalho():
 def reiniciar_sessao(motivo: str, bot_id: int = None) -> bool:
     """Reinicia a sessão do bot."""
     try:
-        logger.warning(f"BOT {bot_id}: Reiniciando sessão - Motivo: {motivo}")
+        # Adiciona extra={'terminal': False} para não mostrar no terminal
+        logger.warning(f"BOT {bot_id}: Reiniciando sessão - Motivo: {motivo}", extra={
+            'session_restart': {
+                'bot_id': bot_id,
+                'reason': motivo
+            },
+            'terminal': False
+        })
         
         # Fecha sessão atual
         session_manager.close_session(bot_id)
