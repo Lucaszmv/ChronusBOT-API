@@ -93,11 +93,34 @@ def obter_playback_access_token(channel_name: str, fingerprint: dict, bot_id: in
         session = get_session(bot_id)
         
         response = session.post(url, headers=headers, json=payload)
+        
+        # MELHORAR: Adicionar tratamentos específicos para cada erro
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 429:  # Rate limit
+                logger.error(f"BOT {bot_id}: Rate limit atingido na obtenção do token")
+                return None
+            elif response.status_code == 403:  # Forbidden
+                logger.error(f"BOT {bot_id}: Acesso negado na obtenção do token")
+                return None
+            elif response.status_code == 404:  # Not Found
+                logger.error(f"BOT {bot_id}: Canal não encontrado")
+                return None
+            else:
+                logger.error(f"BOT {bot_id}: Erro HTTP {response.status_code} na obtenção do token")
+                return None
+        except requests.exceptions.ConnectionError:
+            logger.error(f"BOT {bot_id}: Erro de conexão na obtenção do token")
+            return None
+        except requests.exceptions.Timeout:
+            logger.error(f"BOT {bot_id}: Timeout na obtenção do token")
+            return None
+        
         response_text = response.text
         
         logger.info(f"BOT {bot_id}: Token Response: {response_text}", extra={'terminal': False})
         
-        response.raise_for_status()
         data = response.json()
         
         if 'data' in data and 'streamPlaybackAccessToken' in data['data']:

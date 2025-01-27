@@ -358,12 +358,29 @@ def bot_worker(canal_nome: str, bot_id: int):
         token_data = None
         max_token_tentativas = 3
         token_tentativas = 0
-        
+        backoff_time = 2  # Tempo inicial de espera
+
         while token_data is None and token_tentativas < max_token_tentativas:
-            token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
-            if not token_data:
+            try:
+                token_data = obter_playback_access_token(canal_nome, fingerprint, bot_id)
+                if not token_data:
+                    token_tentativas += 1
+                    wait_time = backoff_time * (2 ** token_tentativas)  # Backoff exponencial
+                    logger.warning(f"BOT {bot_id}: Tentativa {token_tentativas}/{max_token_tentativas} falhou. "
+                                 f"Aguardando {wait_time}s antes da próxima tentativa")
+                    time.sleep(wait_time)
+                    
+                    # Se última tentativa falhou, força reinício da sessão
+                    if token_tentativas == max_token_tentativas:
+                        logger.error(f"BOT {bot_id}: Todas as tentativas de obter token falharam. Reiniciando sessão...")
+                        session_manager.close_session(bot_id)
+                        if not reiniciar_sessao("Falha na obtenção do token", bot_id):
+                            return
+                        fingerprint = session_manager.get_fingerprint(bot_id)  # Atualiza fingerprint
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Erro inesperado ao obter token: {str(e)}")
                 token_tentativas += 1
-                time.sleep(2)
+                time.sleep(backoff_time)
         
         if not token_data:
             logger.error(f"BOT {bot_id}: Falha ao obter token após {max_token_tentativas} tentativas")
