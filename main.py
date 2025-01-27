@@ -313,8 +313,9 @@ def update_menu():
             config = load_config()
             canal_nome = config['channels'][-1]
             
-            if not verificar_canal_online(canal_nome):
-                print(f"\nCanal {canal_nome} está offline. Encerrando bots...")
+            online, mensagem = verificar_canal_online(canal_nome)
+            if not online:
+                print(f"\n{Fore.RED}{mensagem}. Encerrando bots...{Style.RESET_ALL}")
                 should_stop.set()
                 break
                 
@@ -809,9 +810,10 @@ def main():
                 num_bots = config['bots']  # Usa valor salvo
                 limite_anuncios_global = config['ads_limit']  # Usa valor salvo
                 
-                # Verifica se o canal est online
-                if not verificar_canal_online(canal_nome):
-                    print(f"\n{Fore.RED}Erro: Canal offline ou não encontrado.{Style.RESET_ALL}")
+                # Verifica se o canal está online
+                online, mensagem = verificar_canal_online(canal_nome)
+                if not online:
+                    print(f"\n{Fore.RED}Erro: {mensagem}{Style.RESET_ALL}")
                     input(f"\n{Fore.YELLOW}Pressione ENTER para continuar...{Style.RESET_ALL}")
                     continue
                 
