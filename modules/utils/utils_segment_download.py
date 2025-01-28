@@ -49,59 +49,55 @@ logger = logging.getLogger(__name__)
 def simular_download_segmento(url, bot_id=None):
     """Simula o download de um segmento de stream."""
     rate_limiter = get_rate_limiter()
+    max_tentativas = 3  # Número de tentativas antes de desistir
+    tentativa = 0
     
-    try:
-        if not rate_limiter.acquire(bot_id, 'segment'):
-            logger.warning(f"BOT {bot_id}: Limite de downloads atingido, aguardando...")
-            time.sleep(1)
-            return False
+    while tentativa < max_tentativas:
+        try:
+            if not rate_limiter.acquire(bot_id, 'segment'):
+                logger.warning(f"BOT {bot_id}: Limite de downloads atingido, aguardando...")
+                time.sleep(1)
+                continue
+                
+            session = session_manager.get_session(bot_id)
+            response = session.get(url, timeout=5)
             
-        inicio = url.find('https://')
-        if inicio == -1 or not url.endswith('.ts'):
-            logger.error(f"BOT {bot_id}: URL inválida: {url}")
-            return False
+            if response.status_code == 200:
+                # Extrair apenas o nome do arquivo do segmento
+                segment_name = url.split('/')[-1].split('?')[0]
+                segment_name = segment_name.split('.ts')[0][-80:] + '.ts'
+                # Adiciona timestamp
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                print(f"[BOT {bot_id}][{timestamp}] Segmento baixado com sucesso: {segment_name}")
+                # Log completo vai para o arquivo
+                logger.debug(f"BOT {bot_id}: Segmento baixado com sucesso: {url}")
+                segmentos_baixados.add(url)
+                return True
+                
+        except requests.exceptions.Timeout:
+            tentativa += 1
+            wait_time = 2 ** tentativa  # Backoff exponencial: 2s, 4s, 8s
+            logger.warning(f"BOT {bot_id}: Timeout ao baixar segmento (tentativa {tentativa}/{max_tentativas}). "
+                         f"Aguardando {wait_time}s antes de tentar novamente...")
+            time.sleep(wait_time)
+            continue
             
-        url = url[inicio:]
-        
-        # Se já baixou, não precisa baixar novamente
-        if url in segmentos_baixados:
-            logger.debug(f"BOT {bot_id}: Segmento já baixado: {url}")
-            return True
+        except Exception as e:
+            tentativa += 1
+            logger.error(f"BOT {bot_id}: Erro ao baixar segmento: {str(e)}")
+            time.sleep(2)
+            continue
             
-        session = session_manager.get_session(bot_id) if bot_id else requests.Session()
-        fingerprint = session_manager.get_fingerprint(bot_id) if bot_id else {}
-        
-        headers = {
-            'Accept': '*/*',
-            'Accept-Encoding': fingerprint.get('Accept-Encoding', 'gzip, deflate, br'),
-            'Accept-Language': fingerprint.get('Accept-Language', 'en-US,en;q=0.9'),
-            'Origin': 'https://www.twitch.tv',
-            'Referer': 'https://www.twitch.tv/',
-            'User-Agent': fingerprint.get('User-Agent')
-        }
-
-        response = session.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            # Extrair apenas o nome do arquivo do segmento
-            segment_name = url.split('/')[-1].split('?')[0]
-            segment_name = segment_name.split('.ts')[0][-80:] + '.ts'
-            # Adiciona timestamp
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            print(f"[BOT {bot_id}][{timestamp}] Segmento baixado com sucesso: {segment_name}")
-            # Log completo vai para o arquivo
-            logger.debug(f"BOT {bot_id}: Segmento baixado com sucesso: {url}")
-            segmentos_baixados.add(url)
-            return True
+        finally:
+            rate_limiter.release(bot_id)
             
-        logger.error(f"BOT {bot_id}: Falha ao baixar segmento. Status: {response.status_code}")
+    # Só fecha a sessão se todas as tentativas falharem
+    if tentativa >= max_tentativas:
+        logger.error(f"BOT {bot_id}: Todas as tentativas de download falharam. Reiniciando sessão...")
+        session_manager.close_session(bot_id)
         return False
-
-    except Exception as e:
-        logger.error(f"BOT {bot_id}: Erro ao baixar segmento: {str(e)}")
-        return False
-
-    finally:
-        rate_limiter.release(bot_id, 'segment')
+        
+    return True
 
 def processar_fila_download(fila_segmentos: deque, bot_id: int = None):
     """Processa a fila de download de segmentos."""
