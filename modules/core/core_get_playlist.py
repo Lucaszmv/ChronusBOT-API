@@ -36,87 +36,79 @@ def obter_playlist_m3u8(canal_nome: str, token_data: dict, bot_id: int = None) -
     Returns:
         Optional[str]: Conteúdo da playlist M3U8 ou None se ocorrer erro.
     """
+    rate_limiter = get_rate_limiter()
     max_tentativas = 3
     tentativa = 0
-    failure_mgr = get_failure_manager()
-    rate_limiter = get_rate_limiter()
+    backoff_time = 2  # Tempo inicial de espera
     
     while tentativa < max_tentativas:
-        tentativa += 1
         try:
-            # Adquire permissão do rate limiter
             if not rate_limiter.acquire(bot_id):
-                logger.warning(f"BOT {bot_id}: Limite de requisições atingido, aguardando...")
-                time.sleep(2)
+                logger.warning(f"BOT {bot_id}: Limite de requisições atingido...")
+                time.sleep(1)
                 continue
                 
-            token = token_data['value']
-            signature = token_data['signature']
-            
             session = get_session(bot_id)
-            fingerprint = session_manager.get_fingerprint(bot_id)
-
+            
+            # Monta URL da playlist
             url = f"https://usher.ttvnw.net/api/channel/hls/{canal_nome}.m3u8"
-            
             params = {
-                "player": "twitchweb",
-                "p": str(int(random.random() * 999999)),
-                "type": "any",
-                "allow_source": "true",
-                "allow_audio_only": "true",
-                "allow_spectre": "false",
-                "fast_bread": "true",
-                "sig": signature,
-                "token": token,
+                'player': 'twitchweb',
+                'token': token_data['value'],
+                'sig': token_data['signature'],
+                'allow_source': 'true',
+                'allow_audio_only': 'false',
+                'fast_bread': 'true'
             }
             
-            headers = {
-                "User-Agent": fingerprint.get('User-Agent'),
-                "Client-ID": fingerprint.get('Client-Id'),
-                "X-Device-Id": fingerprint.get('Device-Id')
-            }
-
-            response = session.get(url, params=params, headers=headers)
-            response.raise_for_status()
+            response = session.get(url, params=params, timeout=5)
             
-            # Log detalhado da requisição da playlist
-            logger.info("", extra={
-                'playlist_details': {
-                    'method': 'GET',
-                    'url': response.url,
-                    'headers_sent': dict(response.request.headers),
-                    'headers_received': dict(response.headers),
-                    'status_code': response.status_code,
-                    'reason': response.reason,
-                    'response': response.text[:1000] + ('...' if len(response.text) > 1000 else '')  # Primeiras 1000 chars da playlist
-                }
-            })
-            
-            # Se chegou aqui, a requisição foi bem sucedida
-            failure_mgr.register_success(bot_id)
-            return response.text
-
-        except requests.exceptions.RequestException as e:
-            error_msg = f"Tentativa {tentativa}/{max_tentativas} falhou: {str(e)}"
-            logging.error(error_msg)
-            
-            if failure_mgr.register_failure(bot_id, error_msg):
-                logging.warning(f"BOT {bot_id}: Muitas falhas consecutivas, reiniciando sessão...")
-                session_manager.close_session(bot_id)
-                return None
-            
-            if tentativa < max_tentativas:
-                wait_time = 2 ** tentativa  # Backoff exponencial
-                logging.info(f"Aguardando {wait_time}s antes da próxima tentativa...")
-                time.sleep(wait_time)
-            else:
-                logging.error("Todas as tentativas de obter playlist falharam")
-                return None
+            try:
+                response.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                if response.status_code == 429:  # Rate limit
+                    logger.error(f"BOT {bot_id}: Rate limit atingido na obtenção da playlist")
+                elif response.status_code == 403:  # Forbidden
+                    logger.error(f"BOT {bot_id}: Acesso negado na obtenção da playlist")
+                elif response.status_code == 404:  # Not Found
+                    logger.error(f"BOT {bot_id}: Canal não encontrado")
+                else:
+                    logger.error(f"BOT {bot_id}: Erro HTTP {response.status_code} na obtenção da playlist")
                 
+                tentativa += 1
+                wait_time = backoff_time * (2 ** tentativa)
+                logger.warning(f"BOT {bot_id}: Tentativa {tentativa}/{max_tentativas} falhou. "
+                             f"Aguardando {wait_time}s antes da próxima tentativa")
+                time.sleep(wait_time)
+                continue
+                
+            return response.text
+            
+        except requests.exceptions.Timeout:
+            tentativa += 1
+            wait_time = backoff_time * (2 ** tentativa)
+            logger.warning(f"BOT {bot_id}: Timeout ao obter playlist (tentativa {tentativa}/{max_tentativas}). "
+                         f"Aguardando {wait_time}s...")
+            time.sleep(wait_time)
+            continue
+            
+        except requests.exceptions.ConnectionError:
+            tentativa += 1
+            logger.error(f"BOT {bot_id}: Erro de conexão ao obter playlist")
+            time.sleep(2)
+            continue
+            
+        except Exception as e:
+            tentativa += 1
+            logger.error(f"BOT {bot_id}: Erro ao obter playlist: {str(e)}")
+            time.sleep(2)
+            continue
+            
         finally:
-            # Libera o recurso do rate limiter
             rate_limiter.release(bot_id)
-
+            
+    # Se chegou aqui, todas as tentativas falharam
+    logger.error(f"BOT {bot_id}: Todas as tentativas de obter playlist falharam")
     return None
 
 def tentar_obter_playlist_com_retry(canal_nome: str, token_data: dict, bot_id: int = None) -> Tuple[Optional[str], bool]:
