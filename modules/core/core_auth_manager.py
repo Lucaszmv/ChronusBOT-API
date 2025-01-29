@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, Optional, List
 from dataclasses import dataclass
 import random
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -40,30 +41,34 @@ class AuthManager:
             logger.error(f"Erro ao carregar contas: {str(e)}")
             
     def get_account(self, bot_id: int) -> Optional[TwitchAccount]:
-        """Obtém uma conta disponível para o bot."""
-        try:
-            # Se já tem uma conta associada a este bot, retorna ela
-            if bot_id in self.accounts:
-                return self.accounts[bot_id]
+        backoff_time = 2
+        tentativa = 0
+        
+        while True:  # Loop infinito
+            try:
+                # Se já tem conta associada, retorna ela
+                if bot_id in self.accounts:
+                    return self.accounts[bot_id]
                 
-            # Filtra contas disponíveis
-            available = [acc for acc in self.available_accounts if not acc.in_use]
-            if not available:
-                # Se não há contas disponíveis, retorna None sem erro
-                logger.info(f"BOT {bot_id}: Não há contas disponíveis, operando sem conta")
-                return None
+                # Filtra contas disponíveis
+                available = [acc for acc in self.available_accounts if not acc.in_use]
+                if not available:
+                    wait_time = backoff_time * (2 ** (tentativa % 3))
+                    tentativa += 1
+                    logger.warning(f"BOT {bot_id}: Aguardando conta disponível... ({tentativa})")
+                    time.sleep(wait_time)
+                    continue
                 
-            # Escolhe uma conta aleatória
-            account = random.choice(available)
-            account.in_use = True
-            self.accounts[bot_id] = account
-            
-            logger.info(f"BOT {bot_id}: Usando conta {account.username}")
-            return account
-            
-        except Exception as e:
-            logger.error(f"Erro ao obter conta: {str(e)}")
-            return None
+                # Escolhe conta aleatória
+                account = random.choice(available)
+                account.in_use = True
+                self.accounts[bot_id] = account
+                return account
+                
+            except Exception as e:
+                logger.error(f"Erro ao obter conta: {str(e)}")
+                time.sleep(backoff_time)
+                continue
         
     def release_account(self, bot_id: int):
         """Libera uma conta após uso."""

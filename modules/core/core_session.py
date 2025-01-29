@@ -115,17 +115,15 @@ class SessionManager:
         
         return session
     
-    def close_session(self, bot_id: int):
+    def close_session(self, bot_id: int, release_proxy: bool = True):
         """
         Fecha a sessão de um bot específico e libera seu proxy.
         """
         if bot_id in self.sessions:
             self.sessions[bot_id].close()
             del self.sessions[bot_id]
-            del self.fingerprints[bot_id]
-            
-            # Libera o proxy através do ProxyManager
-            self.proxy_manager.release_proxy(bot_id)
+            if release_proxy:
+                self.proxy_manager.release_proxy(bot_id)
             
             if bot_id in self.bot_proxies:
                 del self.bot_proxies[bot_id]
@@ -153,6 +151,13 @@ class SessionManager:
         if bot_id in self.bot_proxies:
             return self.bot_proxies[bot_id]
         return "Sem proxy"
+    
+    def create_session_with_data(self, bot_id: int, proxy: str, fingerprint: dict):
+        """Cria uma nova sessão com proxy e fingerprint específicos."""
+        self.fingerprints[bot_id] = fingerprint
+        self.bot_proxies[bot_id] = proxy
+        self.sessions[bot_id] = self.create_session(proxy)
+        return self.sessions[bot_id]
 
 # Instância global do gerenciador de sessões
 session_manager = SessionManager()
