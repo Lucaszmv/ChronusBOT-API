@@ -36,36 +36,46 @@ class SessionManager:
         """
         Obtém ou cria uma sessão para um bot específico, sempre usando proxy.
         """
-        if bot_id not in self.sessions:
-            # Importações sob demanda para evitar circular import
-            from modules.core.core_fingerprint import get_fingerprint
-            
-            # Gerar novo fingerprint para o bot
-            self.fingerprints[bot_id] = get_fingerprint()
-            
-            # Obtém proxy do gerenciador (agora vai tentar indefinidamente)
-            proxy = None
-            while not proxy:
-                proxy = self.proxy_manager.get_proxy(bot_id)
-                if not proxy:
-                    logger.warning(f"BOT {bot_id}: Aguardando proxy válido...")
-                    time.sleep(5)
-            
-            self.bot_proxies[bot_id] = proxy
-            self.sessions[bot_id] = self.create_session(proxy)
-            
-            # Log detalhado da sessão
-            logger.info("", extra={
-                'session_details': {
-                    'fingerprint': self.fingerprints[bot_id],
-                    'proxy': proxy,
-                    'user_agent': self.fingerprints[bot_id].get('User-Agent'),
-                    'client_id': self.fingerprints[bot_id].get('Client-Id')
-                }
-            })
-            
-            logger.info(f"Nova sessão criada para bot {bot_id} com proxy {proxy}", extra={'terminal': False})
-        return self.sessions[bot_id]
+        backoff_time = 2
+        
+        while True:  # Loop infinito
+            try:
+                if bot_id not in self.sessions:
+                    # Importações sob demanda para evitar circular import
+                    from modules.core.core_fingerprint import get_fingerprint
+                    
+                    # Gera novo fingerprint
+                    self.fingerprints[bot_id] = get_fingerprint()
+                    
+                    # Tenta obter proxy indefinidamente
+                    proxy = None
+                    while not proxy:
+                        proxy = self.proxy_manager.get_proxy(bot_id)
+                        if not proxy:
+                            logger.warning(f"BOT {bot_id}: Aguardando proxy válido...")
+                            time.sleep(backoff_time)
+                    
+                    self.bot_proxies[bot_id] = proxy
+                    self.sessions[bot_id] = self.create_session(proxy)
+                    
+                    # Log detalhado da sessão
+                    logger.info("", extra={
+                        'session_details': {
+                            'fingerprint': self.fingerprints[bot_id],
+                            'proxy': proxy,
+                            'user_agent': self.fingerprints[bot_id].get('User-Agent'),
+                            'client_id': self.fingerprints[bot_id].get('Client-Id')
+                        }
+                    })
+                    
+                    logger.info(f"Nova sessão criada para bot {bot_id} com proxy {proxy}", extra={'terminal': False})
+                    
+                return self.sessions[bot_id]
+                
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Erro ao obter sessão: {str(e)}")
+                time.sleep(backoff_time)
+                continue
     
     def get_fingerprint(self, bot_id: int) -> Dict[str, str]:
         """

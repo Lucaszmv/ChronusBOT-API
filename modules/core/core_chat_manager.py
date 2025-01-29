@@ -70,12 +70,20 @@ class TwitchChatManager:
                 
     def _keep_alive(self, bot_id: int):
         """Mantém a conexão viva enviando PING periodicamente."""
-        conn = self.connections.get(bot_id)
-        if not conn:
-            return
-            
-        while conn.connected:
+        backoff_time = 2
+        
+        while True:  # Loop infinito
             try:
+                if not self.connections.get(bot_id) or not self.connections[bot_id].connected:
+                    logger.info(f"BOT {bot_id}: Reconectando ao chat...")
+                    self.reconnect_chat(bot_id)
+                    time.sleep(1)
+                    continue
+                    
+                conn = self.connections.get(bot_id)
+                if not conn:
+                    return
+                    
                 current_time = time.time()
                 if current_time - conn.last_ping >= 60:
                     conn.socket.send("PING :tmi.twitch.tv\n".encode('utf-8'))
@@ -88,8 +96,8 @@ class TwitchChatManager:
                     
             except Exception as e:
                 logger.error(f"BOT {bot_id}: Erro no keep-alive: {str(e)}")
-                conn.connected = False
-                break
+                time.sleep(backoff_time)
+                continue
                 
             time.sleep(1)
             
@@ -102,6 +110,21 @@ class TwitchChatManager:
                 logger.info(f"BOT {bot_id}: Mensagem enviada: {message}")
             except Exception as e:
                 logger.error(f"BOT {bot_id}: Erro ao enviar mensagem: {str(e)}")
+
+    def reconnect_chat(self, bot_id: int):
+        while True:  # Tenta reconectar indefinidamente
+            try:
+                if bot_id in self.connections:
+                    self.disconnect_chat(bot_id)
+                
+                success = self.connect_chat(bot_id)
+                if success:
+                    logger.info(f"BOT {bot_id}: Reconectado ao chat com sucesso")
+                    return
+                    
+            except Exception as e:
+                logger.error(f"BOT {bot_id}: Erro ao reconectar: {str(e)}")
+                time.sleep(5)
 
 # Instância global
 chat_manager = TwitchChatManager()
